@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thermal Trigger Visualizer</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.3.2/dist/maplibre-gl.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+    #map { width: 100%; height: 100%; }
+
+    #panel {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255,255,255,0.92);
+      border-radius: 8px;
+      padding: 14px 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      min-width: 260px;
+      z-index: 10;
+    }
+    #panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #333; }
+    #panel label { font-size: 12px; color: #555; display: block; margin-bottom: 2px; }
+    #panel input[type=datetime-local],
+    #panel input[type=range] { width: 100%; margin-bottom: 10px; }
+    #panel .toggle-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    #panel .toggle-row label { margin-bottom: 0; flex: 1; }
+    #arrow-svg {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: rgba(255,255,255,0.85);
+      border-radius: 8px;
+      padding: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+    #status { font-size: 11px; color: #888; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="panel">
+    <h2>☀ Thermal Trigger Visualizer</h2>
+    <label for="dt-picker">Date &amp; Time (UTC)</label>
+    <input type="datetime-local" id="dt-picker" />
+
+    <div class="toggle-row">
+      <input type="checkbox" id="toggle-thermal" checked />
+      <label for="toggle-thermal">☀ Thermal driving</label>
+      <input type="range" id="opacity-thermal" min="0" max="100" value="70" style="width:80px;margin-bottom:0" />
+    </div>
+
+    <div class="toggle-row">
+      <input type="checkbox" id="toggle-wind" checked />
+      <label for="toggle-wind">💨 Wind exposure</label>
+      <input type="range" id="opacity-wind" min="0" max="100" value="60" style="width:80px;margin-bottom:0" />
+    </div>
+
+    <div id="status">Loading…</div>
+  </div>
+
+  <svg id="arrow-svg" width="120" height="120" viewBox="-60 -60 120 120">
+    <defs>
+      <marker id="arrowhead-sun" markerWidth="6" markerHeight="6"
+              refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
+      </marker>
+      <marker id="arrowhead-wind" markerWidth="6" markerHeight="6"
+              refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" />
+      </marker>
+    </defs>
+    <circle cx="0" cy="0" r="55" fill="none" stroke="#e5e7eb" stroke-width="1" />
+    <text x="0" y="-42" text-anchor="middle" font-size="9" fill="#6b7280">N</text>
+    <text x="0" y="50" text-anchor="middle" font-size="9" fill="#6b7280">S</text>
+    <text x="43" y="4" text-anchor="middle" font-size="9" fill="#6b7280">E</text>
+    <text x="-43" y="4" text-anchor="middle" font-size="9" fill="#6b7280">W</text>
+    <!-- Sun arrow -->
+    <line id="sun-arrow" x1="0" y1="0" x2="0" y2="-40"
+          stroke="#f59e0b" stroke-width="3" marker-end="url(#arrowhead-sun)" />
+    <!-- Wind arrow -->
+    <line id="wind-arrow" x1="0" y1="0" x2="0" y2="-35"
+          stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead-wind)" />
+  </svg>
+
+  <script src="https://unpkg.com/maplibre-gl@4.3.2/dist/maplibre-gl.js"></script>
+  <script>
+  (function() {
+    const API_BASE = "";  // same origin
+
+    // Default bbox: W, S, E, N
+    const BBOX = [9.36, 51.83, 9.65, 52.03];
+    const CENTER_LON = (BBOX[0] + BBOX[2]) / 2;
+    const CENTER_LAT = (BBOX[1] + BBOX[3]) / 2;
+
+    // ── Map init ──────────────────────────────────────────────────────────
+    const map = new maplibregl.Map({
+      container: "map",
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution: "© OpenStreetMap contributors",
+          },
+        },
+        layers: [{ id: "osm", type: "raster", source: "osm" }],
+      },
+      center: [CENTER_LON, CENTER_LAT],
+      zoom: 11,
+    });
+
+    // ── Status helper ─────────────────────────────────────────────────────
+    const statusEl = document.getElementById("status");
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    // ── Datetime picker ───────────────────────────────────────────────────
+    const dtPicker = document.getElementById("dt-picker");
+    function nowLocalISO() {
+      const d = new Date();
+      d.setSeconds(0, 0);
+      return d.toISOString().slice(0, 16);
+    }
+    dtPicker.value = nowLocalISO();
+
+    // ── Arrow helpers ─────────────────────────────────────────────────────
+    function setArrow(elemId, azDeg, length) {
+      const rad = (azDeg - 90) * Math.PI / 180; // svg x = east
+      const x2 = length * Math.cos(rad);
+      const y2 = -length * Math.sin(rad);  // svg y flipped
+      const el = document.getElementById(elemId);
+      el.setAttribute("x2", x2.toFixed(1));
+      el.setAttribute("y2", y2.toFixed(1));
+    }
+
+    // ── Image source helpers ──────────────────────────────────────────────
+    const OVERLAY_COORDS = [
+      [BBOX[0], BBOX[3]], // top-left NW
+      [BBOX[2], BBOX[3]], // top-right NE
+      [BBOX[2], BBOX[1]], // bottom-right SE
+      [BBOX[0], BBOX[1]], // bottom-left SW
+    ];
+
+    map.on("load", () => {
+      // Add thermal overlay source + layer
+      map.addSource("thermal", {
+        type: "image",
+        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        coordinates: OVERLAY_COORDS,
+      });
+      map.addLayer({ id: "thermal-layer", type: "raster", source: "thermal", paint: { "raster-opacity": 0.7 } });
+
+      // Add wind overlay source + layer
+      map.addSource("wind-overlay", {
+        type: "image",
+        url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        coordinates: OVERLAY_COORDS,
+      });
+      map.addLayer({ id: "wind-layer", type: "raster", source: "wind-overlay", paint: { "raster-opacity": 0.6 } });
+
+      // Initial data load
+      refreshAll();
+    });
+
+    // ── Toggle + opacity ──────────────────────────────────────────────────
+    document.getElementById("toggle-thermal").addEventListener("change", (e) => {
+      map.setLayoutProperty("thermal-layer", "visibility", e.target.checked ? "visible" : "none");
+    });
+    document.getElementById("toggle-wind").addEventListener("change", (e) => {
+      map.setLayoutProperty("wind-layer", "visibility", e.target.checked ? "visible" : "none");
+    });
+    document.getElementById("opacity-thermal").addEventListener("input", (e) => {
+      map.setPaintProperty("thermal-layer", "raster-opacity", e.target.value / 100);
+    });
+    document.getElementById("opacity-wind").addEventListener("input", (e) => {
+      map.setPaintProperty("wind-layer", "raster-opacity", e.target.value / 100);
+    });
+
+    // ── Refresh on datetime change ─────────────────────────────────────────
+    let refreshTimer = null;
+    dtPicker.addEventListener("change", () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshAll, 300);
+    });
+
+    async function refreshAll() {
+      const dtValue = dtPicker.value;  // local ISO
+      const dt = new Date(dtValue).toISOString();
+      const bboxStr = BBOX.join(",");
+      setStatus("Loading…");
+
+      try {
+        const [sunData, windData] = await Promise.all([
+          fetchJSON(`/sun?bbox=${bboxStr}&datetime=${encodeURIComponent(dt)}`),
+          fetchJSON(`/wind?bbox=${bboxStr}&datetime=${encodeURIComponent(dt)}`),
+        ]);
+
+        // Update arrows
+        setArrow("sun-arrow", sunData.azimuth, 40);
+        // Wind: mean_vec is [east, north, 0]; convert to azimuth
+        const we = windData.mean_vec[0], wn = windData.mean_vec[1];
+        const windAz = (Math.atan2(we, wn) * 180 / Math.PI + 360) % 360;
+        setArrow("wind-arrow", windAz, 35);
+
+        // Update overlay PNGs
+        await Promise.all([
+          updateImageSource("thermal", `/overlay/thermal?bbox=${bboxStr}&datetime=${encodeURIComponent(dt)}`),
+          updateImageSource("wind-overlay", `/overlay/wind?bbox=${bboxStr}&datetime=${encodeURIComponent(dt)}`),
+        ]);
+
+        setStatus(`Updated ${new Date().toLocaleTimeString()}`);
+      } catch (err) {
+        setStatus("Error: " + err.message);
+        console.error(err);
+      }
+    }
+
+    async function fetchJSON(url) {
+      const resp = await fetch(API_BASE + url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
+      return resp.json();
+    }
+
+    async function updateImageSource(sourceId, url) {
+      const resp = await fetch(API_BASE + url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: OVERLAY_COORDS });
+    }
+
+  })();
+  </script>
+</body>
+</html>
