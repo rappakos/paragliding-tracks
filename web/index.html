@@ -118,7 +118,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.3.2/dist/maplibre-gl.js"></script>
   <script>
   (function() {
-    const API_BASE = "";  // same origin
+    const API_BASE = window.location.pathname.replace(/\/[^/]*$/, "");  // auto-detect sub-path
 
     // Default bbox: W, S, E, N
     const BBOX = [9.21, 51.74, 9.80, 52.12];
