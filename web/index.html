@@ -71,6 +71,13 @@
       <a href="https://github.com/rappakos/paragliding-tracks/blob/main/README.md" style="font-size:12px;text-decoration:none;background:#333;color:#fff;padding:3px 8px;border-radius:4px;">Background</a>
     </div>
     <h2>☀ Thermal Trigger Visualizer</h2>
+
+    <label for="region-select" style="margin-bottom:2px;">Region</label>
+    <select id="region-select" style="width:100%;margin-bottom:10px;font-size:12px;padding:3px;">
+      <option value="weserbergland">Weserbergland</option>
+      <option value="westharz">Western Harz</option>
+    </select>
+
     <label for="dt-picker">Date &amp; Time (UTC)</label>
     <input type="datetime-local" id="dt-picker" />
 
@@ -140,8 +147,12 @@
   (function() {
     const API_BASE = window.location.pathname.replace(/\/[^/]*$/, "");  // auto-detect sub-path
 
-    // Default bbox: W, S, E, N
-    const BBOX = [9.21, 51.74, 9.80, 52.12];
+    // ── Regions ───────────────────────────────────────────────────────────
+    const REGIONS = {
+      weserbergland: { bbox: [9.21, 51.74, 9.80, 52.12], zoom: 11 },
+      westharz:      { bbox: [10.1208, 51.4377, 11.1162, 51.9623], zoom: 10 },
+    };
+    let BBOX = REGIONS.weserbergland.bbox;
     const CENTER_LON = (BBOX[0] + BBOX[2]) / 2;
     const CENTER_LAT = (BBOX[1] + BBOX[3]) / 2;
 
@@ -190,19 +201,21 @@
     }
 
     // ── Image source helpers ──────────────────────────────────────────────
-    const OVERLAY_COORDS = [
-      [BBOX[0], BBOX[3]], // top-left NW
-      [BBOX[2], BBOX[3]], // top-right NE
-      [BBOX[2], BBOX[1]], // bottom-right SE
-      [BBOX[0], BBOX[1]], // bottom-left SW
-    ];
+    function getOverlayCoords() {
+      return [
+        [BBOX[0], BBOX[3]], // top-left NW
+        [BBOX[2], BBOX[3]], // top-right NE
+        [BBOX[2], BBOX[1]], // bottom-right SE
+        [BBOX[0], BBOX[1]], // bottom-left SW
+      ];
+    }
 
     map.on("load", () => {
       // Add thermal overlay source + layer
       map.addSource("thermal", {
         type: "image",
         url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        coordinates: OVERLAY_COORDS,
+        coordinates: getOverlayCoords(),
       });
       map.addLayer({ id: "thermal-layer", type: "raster", source: "thermal", paint: { "raster-opacity": 0.33 } });
 
@@ -210,7 +223,7 @@
       map.addSource("wind-overlay", {
         type: "image",
         url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        coordinates: OVERLAY_COORDS,
+        coordinates: getOverlayCoords(),
       });
       map.addLayer({ id: "wind-layer", type: "raster", source: "wind-overlay", paint: { "raster-opacity": 1.0 } });
 
@@ -233,6 +246,19 @@
     });
     document.getElementById("opacity-map").addEventListener("input", (e) => {
       map.setPaintProperty("osm", "raster-opacity", e.target.value / 100);
+    });
+
+    // ── Region switch ─────────────────────────────────────────────────────
+    document.getElementById("region-select").addEventListener("change", (e) => {
+      const region = REGIONS[e.target.value];
+      BBOX = region.bbox;
+      const lon = (BBOX[0] + BBOX[2]) / 2;
+      const lat = (BBOX[1] + BBOX[3]) / 2;
+      map.flyTo({ center: [lon, lat], zoom: region.zoom });
+      const coords = getOverlayCoords();
+      map.getSource("thermal").setCoordinates(coords);
+      map.getSource("wind-overlay").setCoordinates(coords);
+      refreshAll();
     });
 
     // ── Refresh on datetime change ─────────────────────────────────────────
@@ -294,7 +320,7 @@
         img.src = objectUrl;
       });
 
-      map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: OVERLAY_COORDS });
+      map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: getOverlayCoords() });
       map.triggerRepaint();
     }
 
