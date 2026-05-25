@@ -46,6 +46,10 @@
   <div id="map"></div>
 
   <div id="panel">
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <a href="/" style="font-size:12px;text-decoration:none;background:#333;color:#fff;padding:3px 8px;border-radius:4px;">⌂ Home</a>
+      <a href="https://github.com/rappakos/paragliding-tracks/blob/main/README.md" style="font-size:12px;text-decoration:none;background:#333;color:#fff;padding:3px 8px;border-radius:4px;">Background</a>
+    </div>
     <h2>☀ Thermal Trigger Visualizer</h2>
     <label for="dt-picker">Date &amp; Time (UTC)</label>
     <input type="datetime-local" id="dt-picker" />
@@ -67,6 +71,11 @@
       <input type="range" id="opacity-wind" min="0" max="100" value="100" style="width:80px;margin-bottom:0" />
     </div>
 
+    <div style="font-size:10px;color:#666;margin-top:8px;line-height:1.5;">
+      <b>Legend:</b><br/>
+      Thermal: <span style="color:#f59e0b;">■</span> orange–magenta = strong slope heating<br/>
+      Wind: <span style="color:#d4b200;">■</span> yellow = luv (windward), <span style="color:#3b82f6;">■</span> blue = lee
+    </div>
 
     <div id="status">Loading…</div>
   </div>

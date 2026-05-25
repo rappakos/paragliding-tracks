@@ -21,12 +21,14 @@ def _colormap_yellow_red(t: np.ndarray) -> np.ndarray:
 
 
 def _colormap_diverging(t: np.ndarray) -> np.ndarray:
-    """Map [-1,1] → RGBA (red=windward, blue=lee)."""
+    """Map [-1,1] → RGBA (yellow=windward/luv, blue=lee)."""
     t = np.clip(t, -1, 1)
-    # positive t → blue (lee), negative t → red (windward)
-    r = np.clip(-t, 0, 1).astype(np.float32)
-    g = np.zeros_like(t, dtype=np.float32)
-    b = np.clip(t, 0, 1).astype(np.float32)
+    # negative t → windward (yellow), positive t → lee (blue)
+    luv = np.clip(-t, 0, 1).astype(np.float32)   # windward intensity
+    lee = np.clip(t, 0, 1).astype(np.float32)     # lee intensity
+    r = luv                                        # yellow R + no red in blue
+    g = 0.85 * luv                                 # yellow G (slightly warm)
+    b = lee                                        # blue B
     a = np.abs(t).astype(np.float32)
     return np.stack([r, g, b, a], axis=-1)
 
