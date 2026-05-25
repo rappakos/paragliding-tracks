@@ -38,11 +38,11 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
-# Serve frontend static files if built
-_WEB_PUBLIC = os.path.join(os.path.dirname(__file__), "..", "web", "public")
-if os.path.isdir(_WEB_PUBLIC):
-    app.mount("/static", StaticFiles(directory=_WEB_PUBLIC), name="static")
+# Serve frontend static files
+_WEB_DIR = os.path.join(os.path.dirname(__file__), "..", "web")
+if os.path.isdir(_WEB_DIR):
+    app.mount("/static", StaticFiles(directory=_WEB_DIR), name="static")
 
     @app.get("/")
     async def index():
-        return FileResponse(os.path.join(_WEB_PUBLIC, "index.html"))
+        return FileResponse(os.path.join(_WEB_DIR, "index.html"))

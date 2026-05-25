@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     openmeteo_base: str = "https://api.open-meteo.com/v1"
     cache_dir: str = "./cache"
     # W, S, E, N
-    default_bbox: str = "9.36,51.83,9.65,52.03"
+    default_bbox: str = "9.21,51.74,9.80,52.12"
     log_level: str = "INFO"
 
     # Wind level weights: [10m, 925hPa, 850hPa, 700hPa]
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # DEM resolution in metres
     dem_res_m: int = 30
+
+    # OpenTopography API key for Copernicus GLO-30 DEM
+    opentopography_api_key: str = ""
 
     # Overlay cache TTL in seconds
     overlay_ttl: int = 300

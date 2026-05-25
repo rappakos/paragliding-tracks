@@ -68,46 +68,16 @@ def get_dem_array(bbox: BBox, res_m: int = 30) -> Tuple[np.ndarray, rasterio.tra
 def _load_geotiff_bytes(data: bytes) -> Tuple[np.ndarray, rasterio.transform.Affine, "rasterio.crs.CRS"]:
     with rasterio.open(io.BytesIO(data)) as ds:
         arr = ds.read(1).astype(np.float32)
+        nodata = ds.nodata
+        if nodata is not None:
+            arr[arr == nodata] = 0.0
+        arr = np.nan_to_num(arr, nan=0.0)
         return arr, ds.transform, ds.crs
 
 
 def _fetch_and_reproject(bbox: BBox, res_m: int) -> bytes:
-    """Fetch DEM via py3dep and reproject to EPSG:25832."""
-    try:
-        import py3dep
-        west, south, east, north = bbox
-        # py3dep expects (west, south, east, north) as a tuple
-        dem = py3dep.get_dem(
-            (west, south, east, north),
-            resolution=res_m,
-            crs="EPSG:4326",
-        )
-        # dem is an xarray DataArray; convert to numpy
-        arr = dem.values.astype(np.float32)
-        # build a minimal in-memory GeoTIFF in WGS84 first
-        from rasterio.crs import CRS
-        from rasterio.transform import from_bounds
-        src_crs = CRS.from_epsg(4326)
-        h, w = arr.shape
-        transform_4326 = from_bounds(west, south, east, north, w, h)
-
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-            tmppath = tmp.name
-        with rasterio.open(
-            tmppath,
-            "w",
-            driver="GTiff",
-            height=h,
-            width=w,
-            count=1,
-            dtype=np.float32,
-            crs=src_crs,
-            transform=transform_4326,
-        ) as dst:
-            dst.write(arr, 1)
-    except Exception as exc:
-        logger.warning("py3dep fetch failed (%s); using synthetic flat DEM for testing.", exc)
-        tmppath = _make_synthetic_dem(bbox, res_m)
+    """Fetch DEM and reproject to EPSG:25832. Tries OpenTopography first, then py3dep, then synthetic."""
+    tmppath = _fetch_dem_source(bbox, res_m)
 
     # Reproject to UTM-32N
     reprojected_path = _reproject_to_utm32(tmppath)
@@ -117,6 +87,75 @@ def _fetch_and_reproject(bbox: BBox, res_m: int) -> bytes:
         data = f.read()
     os.unlink(reprojected_path)
     return data
+
+
+def _fetch_dem_source(bbox: BBox, res_m: int) -> str:
+    """Try OpenTopography API, then py3dep, then synthetic fallback. Returns path to GeoTIFF."""
+    west, south, east, north = bbox
+
+    # 1. OpenTopography Copernicus GLO-30
+    if settings.opentopography_api_key:
+        try:
+            return _fetch_opentopography(west, south, east, north)
+        except Exception as exc:
+            logger.warning("OpenTopography fetch failed (%s); trying py3dep.", exc)
+
+    # 2. py3dep (US 3DEP)
+    try:
+        return _fetch_py3dep(bbox, res_m)
+    except Exception as exc:
+        logger.warning("py3dep fetch failed (%s); using synthetic DEM.", exc)
+
+    # 3. Synthetic fallback
+    return _make_synthetic_dem(bbox, res_m)
+
+
+def _fetch_opentopography(west: float, south: float, east: float, north: float) -> str:
+    """Fetch Copernicus GLO-30 DEM from OpenTopography REST API. Returns path to temp GeoTIFF."""
+    import httpx
+
+    url = "https://portal.opentopography.org/API/globaldem"
+    params = {
+        "demtype": "COP30",
+        "south": south,
+        "north": north,
+        "west": west,
+        "east": east,
+        "outputFormat": "GTiff",
+        "API_Key": settings.opentopography_api_key,
+    }
+    logger.info("Fetching Copernicus GLO-30 from OpenTopography (%s, %s, %s, %s)", west, south, east, north)
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.get(url, params=params)
+        resp.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        tmp.write(resp.content)
+        return tmp.name
+
+
+def _fetch_py3dep(bbox: BBox, res_m: int) -> str:
+    """Fetch DEM via py3dep (USGS 3DEP). Returns path to temp GeoTIFF."""
+    import py3dep
+    from rasterio.crs import CRS
+    from rasterio.transform import from_bounds
+
+    west, south, east, north = bbox
+    dem = py3dep.get_dem((west, south, east, north), resolution=res_m, crs="EPSG:4326")
+    arr = dem.values.astype(np.float32)
+    src_crs = CRS.from_epsg(4326)
+    h, w = arr.shape
+    transform_4326 = from_bounds(west, south, east, north, w, h)
+
+    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        tmppath = tmp.name
+    with rasterio.open(
+        tmppath, "w", driver="GTiff",
+        height=h, width=w, count=1, dtype=np.float32,
+        crs=src_crs, transform=transform_4326,
+    ) as dst:
+        dst.write(arr, 1)
+    return tmppath
 
 
 def _reproject_to_utm32(src_path: str) -> str:

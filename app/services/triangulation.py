@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import rasterio
+from scipy.ndimage import gaussian_filter
 from typing import Tuple
 
 from app.cache import normals_cache
@@ -33,6 +34,8 @@ def compute_normals(
     normals : (H-1, W-1, 3) float32 array, unit vectors in ENU.
     """
     H, W = dem.shape
+    # Smooth DEM to remove per-pixel noise and staircase artifacts
+    dem_smooth = gaussian_filter(dem.astype(np.float64), sigma=1.5)
     # pixel spacing in metres (UTM grid, so direct metric)
     dx = transform.a  # positive east
     dy = -transform.e  # positive north (rasterio uses negative e for north-up)
@@ -47,7 +50,7 @@ def compute_normals(
     # UTM x increases east, y increases north (row index increases south)
     vx = xx * dx
     vy = (H - 1 - yy) * dy  # flip so row 0 = north
-    vz = dem.astype(np.float64)
+    vz = dem_smooth
 
     # Triangle A: (i,j), (i+1,j), (i,j+1)  (upper-left)
     p0 = np.stack([vx[:rows, :cols], vy[:rows, :cols], vz[:rows, :cols]], axis=-1)

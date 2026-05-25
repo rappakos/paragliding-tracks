@@ -10,12 +10,13 @@ from typing import List
 
 
 def _colormap_yellow_red(t: np.ndarray) -> np.ndarray:
-    """Map [0,1] → RGBA (yellow=low, red=high, alpha proportional)."""
+    """Map [0,1] → RGBA (orange=low, magenta=high, good contrast vs green OSM)."""
     t = np.clip(t, 0, 1)
     r = np.ones_like(t, dtype=np.float32)
-    g = (1.0 - t).astype(np.float32)
-    b = np.zeros_like(t, dtype=np.float32)
-    a = t.astype(np.float32)
+    g = (0.4 * (1.0 - t)).astype(np.float32)    # orange (1,0.4,0) → magenta (1,0,0.4)
+    b = (0.4 * t).astype(np.float32)
+    # Minimum alpha 0.4 when t>0 so overlay is clearly visible over map
+    a = np.where(t < 0.01, 0.0, 0.4 + 0.6 * t).astype(np.float32)
     return np.stack([r, g, b, a], axis=-1)
 
 
@@ -42,12 +43,17 @@ def thermal_overlay(
     """
     sv = np.array(sun_vec, dtype=np.float32)
     drive = np.einsum("...i,i->...", normals, sv)
+    drive = np.nan_to_num(drive, nan=0.0)
     drive = np.maximum(0.0, drive) * max(ghi, 0.0)
-    max_val = drive.max()
-    if max_val < 1e-6:
-        drive_norm = np.zeros_like(drive)
+    # Remove flat-terrain bias: only show deviation from horizontal surface
+    flat_drive = max(float(sv[2]), 0.0) * max(ghi, 0.0)
+    drive_rel = drive - flat_drive
+    # Normalize: positive = better than flat (thermal trigger)
+    max_abs = np.abs(drive_rel).max()
+    if max_abs < 1e-6:
+        drive_norm = np.zeros_like(drive_rel)
     else:
-        drive_norm = drive / max_val
+        drive_norm = np.clip(drive_rel / max_abs, 0, 1)
     rgba_f = _colormap_yellow_red(drive_norm)
     return _to_png(rgba_f)
 

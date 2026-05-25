@@ -51,42 +51,59 @@
     <input type="datetime-local" id="dt-picker" />
 
     <div class="toggle-row">
+      <label for="opacity-map">🗺️ Map</label>
+      <input type="range" id="opacity-map" min="0" max="100" value="15" style="width:120px;margin-bottom:0" />
+    </div>
+
+    <div class="toggle-row">
       <input type="checkbox" id="toggle-thermal" checked />
       <label for="toggle-thermal">☀ Thermal driving</label>
-      <input type="range" id="opacity-thermal" min="0" max="100" value="70" style="width:80px;margin-bottom:0" />
+      <input type="range" id="opacity-thermal" min="0" max="100" value="33" style="width:80px;margin-bottom:0" />
     </div>
 
     <div class="toggle-row">
       <input type="checkbox" id="toggle-wind" checked />
       <label for="toggle-wind">💨 Wind exposure</label>
-      <input type="range" id="opacity-wind" min="0" max="100" value="60" style="width:80px;margin-bottom:0" />
+      <input type="range" id="opacity-wind" min="0" max="100" value="100" style="width:80px;margin-bottom:0" />
     </div>
+
 
     <div id="status">Loading…</div>
   </div>
 
-  <svg id="arrow-svg" width="120" height="120" viewBox="-60 -60 120 120">
-    <defs>
-      <marker id="arrowhead-sun" markerWidth="6" markerHeight="6"
-              refX="5" refY="3" orient="auto">
-        <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
-      </marker>
-      <marker id="arrowhead-wind" markerWidth="6" markerHeight="6"
-              refX="5" refY="3" orient="auto">
-        <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6" />
-      </marker>
-    </defs>
+  <svg id="arrow-svg" width="130" height="130" viewBox="-65 -65 130 130">
+    <!-- Compass circle + cardinal directions -->
     <circle cx="0" cy="0" r="55" fill="none" stroke="#e5e7eb" stroke-width="1" />
-    <text x="0" y="-42" text-anchor="middle" font-size="9" fill="#6b7280">N</text>
-    <text x="0" y="50" text-anchor="middle" font-size="9" fill="#6b7280">S</text>
-    <text x="43" y="4" text-anchor="middle" font-size="9" fill="#6b7280">E</text>
-    <text x="-43" y="4" text-anchor="middle" font-size="9" fill="#6b7280">W</text>
-    <!-- Sun arrow -->
-    <line id="sun-arrow" x1="0" y1="0" x2="0" y2="-40"
-          stroke="#f59e0b" stroke-width="3" marker-end="url(#arrowhead-sun)" />
-    <!-- Wind arrow -->
-    <line id="wind-arrow" x1="0" y1="0" x2="0" y2="-35"
-          stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead-wind)" />
+    <text x="0" y="-44" text-anchor="middle" font-size="9" fill="#6b7280">N</text>
+    <text x="0" y="52" text-anchor="middle" font-size="9" fill="#6b7280">S</text>
+    <text x="46" y="4" text-anchor="middle" font-size="9" fill="#6b7280">E</text>
+    <text x="-46" y="4" text-anchor="middle" font-size="9" fill="#6b7280">W</text>
+    <!-- Sun icon (placed on circle edge, rotated by JS) -->
+    <g id="sun-icon" transform="rotate(0)">
+      <g transform="translate(0,-42)">
+        <circle cx="0" cy="0" r="7" fill="#f59e0b" />
+        <!-- Sun rays -->
+        <line x1="0" y1="-10" x2="0" y2="-13" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="0" y1="10" x2="0" y2="13" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="-10" y1="0" x2="-13" y2="0" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="10" y1="0" x2="13" y2="0" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="-7" y1="-7" x2="-9.5" y2="-9.5" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="7" y1="-7" x2="9.5" y2="-9.5" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="-7" y1="7" x2="-9.5" y2="9.5" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="7" y1="7" x2="9.5" y2="9.5" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" />
+      </g>
+    </g>
+    <!-- Windsock: mouth at circle edge (wind-FROM side), tapers toward center -->
+    <g id="windsock-icon" transform="rotate(0)">
+      <!-- Sock body: wide mouth at y=-50, narrows toward center at y=-20 -->
+      <polygon points="-7,-50 7,-50 4,-38 2,-26" fill="#e63946" opacity="0.8" />
+      <polygon points="-7,-50 7,-50 4,-38 -4,-38" fill="#fff" opacity="0.5" />
+      <!-- Stripes -->
+      <polygon points="-5.8,-46 5.8,-46 5,-42 -5,-42" fill="#fff" opacity="0.6" />
+      <polygon points="-4.2,-38 4.2,-38 3.4,-34 -3.4,-34" fill="#fff" opacity="0.6" />
+      <!-- Mouth ring -->
+      <ellipse cx="0" cy="-50" rx="7" ry="2.5" fill="none" stroke="#c1121f" stroke-width="1.5" />
+    </g>
   </svg>
 
   <script src="https://unpkg.com/maplibre-gl@4.3.2/dist/maplibre-gl.js"></script>
@@ -95,7 +112,7 @@
     const API_BASE = "";  // same origin
 
     // Default bbox: W, S, E, N
-    const BBOX = [9.36, 51.83, 9.65, 52.03];
+    const BBOX = [9.21, 51.74, 9.80, 52.12];
     const CENTER_LON = (BBOX[0] + BBOX[2]) / 2;
     const CENTER_LAT = (BBOX[1] + BBOX[3]) / 2;
 
@@ -112,7 +129,7 @@
             attribution: "© OpenStreetMap contributors",
           },
         },
-        layers: [{ id: "osm", type: "raster", source: "osm" }],
+        layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.15 } }],
       },
       center: [CENTER_LON, CENTER_LAT],
       zoom: 11,
@@ -132,13 +149,15 @@
     dtPicker.value = nowLocalISO();
 
     // ── Arrow helpers ─────────────────────────────────────────────────────
-    function setArrow(elemId, azDeg, length) {
-      const rad = (azDeg - 90) * Math.PI / 180; // svg x = east
-      const x2 = length * Math.cos(rad);
-      const y2 = -length * Math.sin(rad);  // svg y flipped
-      const el = document.getElementById(elemId);
-      el.setAttribute("x2", x2.toFixed(1));
-      el.setAttribute("y2", y2.toFixed(1));
+    function setSunPosition(azDeg) {
+      // Rotate sun icon group: azimuth 0=N → SVG rotate 0 is up
+      document.getElementById("sun-icon").setAttribute("transform", `rotate(${azDeg})`);
+    }
+    function setWindDirection(azDeg) {
+      // Rotate windsock so mouth faces the wind-FROM direction
+      // azDeg is direction wind blows TO; mouth should face FROM = azDeg + 180
+      const fromAz = (azDeg + 180) % 360;
+      document.getElementById("windsock-icon").setAttribute("transform", `rotate(${fromAz})`);
     }
 
     // ── Image source helpers ──────────────────────────────────────────────
@@ -156,7 +175,7 @@
         url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
         coordinates: OVERLAY_COORDS,
       });
-      map.addLayer({ id: "thermal-layer", type: "raster", source: "thermal", paint: { "raster-opacity": 0.7 } });
+      map.addLayer({ id: "thermal-layer", type: "raster", source: "thermal", paint: { "raster-opacity": 0.33 } });
 
       // Add wind overlay source + layer
       map.addSource("wind-overlay", {
@@ -164,7 +183,7 @@
         url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
         coordinates: OVERLAY_COORDS,
       });
-      map.addLayer({ id: "wind-layer", type: "raster", source: "wind-overlay", paint: { "raster-opacity": 0.6 } });
+      map.addLayer({ id: "wind-layer", type: "raster", source: "wind-overlay", paint: { "raster-opacity": 1.0 } });
 
       // Initial data load
       refreshAll();
@@ -182,6 +201,9 @@
     });
     document.getElementById("opacity-wind").addEventListener("input", (e) => {
       map.setPaintProperty("wind-layer", "raster-opacity", e.target.value / 100);
+    });
+    document.getElementById("opacity-map").addEventListener("input", (e) => {
+      map.setPaintProperty("osm", "raster-opacity", e.target.value / 100);
     });
 
     // ── Refresh on datetime change ─────────────────────────────────────────
@@ -203,12 +225,12 @@
           fetchJSON(`/wind?bbox=${bboxStr}&datetime=${encodeURIComponent(dt)}`),
         ]);
 
-        // Update arrows
-        setArrow("sun-arrow", sunData.azimuth, 40);
-        // Wind: mean_vec is [east, north, 0]; convert to azimuth
+        // Update sun & wind indicators
+        setSunPosition(sunData.azimuth);
+        // Wind: mean_vec is [east, north, 0]; convert to azimuth (direction wind blows FROM)
         const we = windData.mean_vec[0], wn = windData.mean_vec[1];
         const windAz = (Math.atan2(we, wn) * 180 / Math.PI + 360) % 360;
-        setArrow("wind-arrow", windAz, 35);
+        setWindDirection(windAz);
 
         // Update overlay PNGs
         await Promise.all([
@@ -234,7 +256,17 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
       const blob = await resp.blob();
       const objectUrl = URL.createObjectURL(blob);
+
+      // Pre-load image so MapLibre has pixel data immediately
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+
       map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: OVERLAY_COORDS });
+      map.triggerRepaint();
     }
 
   })();
