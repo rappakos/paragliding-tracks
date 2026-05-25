@@ -1,8 +1,8 @@
 """
-DEM acquisition and reprojection service.
+DEM acquisition service.
 
-Fetches SRTM-30m data via py3dep (3DEP / WCS), reprojects to UTM-32N (EPSG:25832),
-and caches the result as a GeoTIFF on disk.
+Fetches Copernicus GLO-30 data via OpenTopography, keeps in native WGS84 grid
+(EPSG:4326) so that pixels map 1:1 to geographic coordinates on the map overlay.
 """
 from __future__ import annotations
 
@@ -15,9 +15,8 @@ from typing import Tuple
 import numpy as np
 import rasterio
 import rasterio.transform
-from pyproj import Transformer
 
-from app.cache import dem_cache, normals_cache
+from app.cache import dem_cache
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,12 +37,12 @@ def _cache_path(bbox: BBox) -> str:
 
 def get_dem_array(bbox: BBox, res_m: int = 30) -> Tuple[np.ndarray, rasterio.transform.Affine, "rasterio.crs.CRS"]:
     """
-    Return (elevation_array, transform, crs) in EPSG:25832 (UTM-32N).
+    Return (elevation_array, transform, crs) in EPSG:4326 (WGS84).
 
     elevation_array shape: (H, W), float32, metres.
     """
     qbbox = _quantise_bbox(bbox)
-    cache_key = ("dem", qbbox, res_m)
+    cache_key = ("dem_wgs84", qbbox, res_m)
 
     cached = dem_cache.get(cache_key)
     if cached is not None:
@@ -58,7 +57,7 @@ def get_dem_array(bbox: BBox, res_m: int = 30) -> Tuple[np.ndarray, rasterio.tra
         return _load_geotiff_bytes(data)
 
     logger.info("Fetching DEM for bbox %s …", qbbox)
-    data = _fetch_and_reproject(bbox, res_m)
+    data = _fetch_dem(bbox, res_m)
     with open(path, "wb") as f:
         f.write(data)
     dem_cache.set(cache_key, data)
@@ -75,17 +74,13 @@ def _load_geotiff_bytes(data: bytes) -> Tuple[np.ndarray, rasterio.transform.Aff
         return arr, ds.transform, ds.crs
 
 
-def _fetch_and_reproject(bbox: BBox, res_m: int) -> bytes:
-    """Fetch DEM and reproject to EPSG:25832. Tries OpenTopography first, then py3dep, then synthetic."""
+def _fetch_dem(bbox: BBox, res_m: int) -> bytes:
+    """Fetch DEM and return as WGS84 GeoTIFF bytes. Tries OpenTopography first, then py3dep, then synthetic."""
     tmppath = _fetch_dem_source(bbox, res_m)
 
-    # Reproject to UTM-32N
-    reprojected_path = _reproject_to_utm32(tmppath)
-    os.unlink(tmppath)
-
-    with open(reprojected_path, "rb") as f:
+    with open(tmppath, "rb") as f:
         data = f.read()
-    os.unlink(reprojected_path)
+    os.unlink(tmppath)
     return data
 
 
@@ -156,36 +151,6 @@ def _fetch_py3dep(bbox: BBox, res_m: int) -> str:
     ) as dst:
         dst.write(arr, 1)
     return tmppath
-
-
-def _reproject_to_utm32(src_path: str) -> str:
-    """Reproject a GeoTIFF to EPSG:25832 and return path to the new file."""
-    import rasterio.warp
-    from rasterio.crs import CRS
-
-    dst_crs = CRS.from_epsg(25832)
-    with tempfile.NamedTemporaryFile(suffix="_utm.tif", delete=False) as tmp:
-        dst_path = tmp.name
-
-    with rasterio.open(src_path) as src:
-        transform, width, height = rasterio.warp.calculate_default_transform(
-            src.crs, dst_crs, src.width, src.height, *src.bounds
-        )
-        kwargs = src.meta.copy()
-        kwargs.update({"crs": dst_crs, "transform": transform, "width": width, "height": height})
-
-        with rasterio.open(dst_path, "w", **kwargs) as dst:
-            for i in range(1, src.count + 1):
-                rasterio.warp.reproject(
-                    source=rasterio.band(src, i),
-                    destination=rasterio.band(dst, i),
-                    src_transform=src.transform,
-                    src_crs=src.crs,
-                    dst_transform=transform,
-                    dst_crs=dst_crs,
-                    resampling=rasterio.warp.Resampling.bilinear,
-                )
-    return dst_path
 
 
 def _make_synthetic_dem(bbox: BBox, res_m: int) -> str:

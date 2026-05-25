@@ -89,7 +89,7 @@ async def get_normals_endpoint(
         raise HTTPException(status_code=500, detail=str(exc))
 
     qbbox = _quantise_bbox(bb)
-    normals = get_normals_cached(("normals", qbbox), dem_arr, transform)
+    normals = get_normals_cached(("normals_v2", qbbox), dem_arr, transform, crs)
 
     H, W, _ = normals.shape
     flat = normals.reshape(-1, 3).tolist()

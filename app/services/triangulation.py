@@ -6,6 +6,9 @@ Each cell (i, j) is split into two triangles:
     lower-right = [(i+1,j+1), (i,j+1), (i+1,j)]
 
 Returns averaged per-cell normal (H-1, W-1, 3).
+
+Supports both UTM (metric) and WGS84 (degree) grids.
+For WGS84, pixel spacing is converted to metres using latitude correction.
 """
 from __future__ import annotations
 
@@ -16,18 +19,24 @@ from typing import Tuple
 
 from app.cache import normals_cache
 
+# Earth radius for degree→metre conversion
+_DEG_TO_M_LAT = 111_320.0  # metres per degree latitude (approx)
+
 
 def compute_normals(
     dem: np.ndarray,
     transform: rasterio.transform.Affine,
+    crs=None,
 ) -> np.ndarray:
     """
     Compute per-cell averaged face normals.
 
     Parameters
     ----------
-    dem : (H, W) float array, elevation in metres (UTM grid).
-    transform : rasterio Affine for the UTM grid.
+    dem : (H, W) float array, elevation in metres.
+    transform : rasterio Affine for the grid.
+    crs : optional CRS. If geographic (EPSG:4326), pixel spacing is
+          converted to metres using latitude correction.
 
     Returns
     -------
@@ -36,9 +45,29 @@ def compute_normals(
     H, W = dem.shape
     # Smooth DEM to remove per-pixel noise and staircase artifacts
     dem_smooth = gaussian_filter(dem.astype(np.float64), sigma=1.5)
-    # pixel spacing in metres (UTM grid, so direct metric)
-    dx = transform.a  # positive east
-    dy = -transform.e  # positive north (rasterio uses negative e for north-up)
+
+    is_geographic = crs is not None and crs.is_geographic
+
+    if is_geographic:
+        # WGS84 grid: transform.a = pixel width in degrees (longitude)
+        #             transform.e = pixel height in degrees (negative for north-up)
+        dlon_deg = transform.a
+        dlat_deg = -transform.e  # positive
+
+        # Compute latitude for each row (center of pixel)
+        # Row 0 is north (transform.f = north edge latitude)
+        row_indices = np.arange(H, dtype=np.float64)
+        lat_per_row = transform.f + transform.e * (row_indices + 0.5)  # degrees
+
+        # Metric spacing per row
+        cos_lat = np.cos(np.radians(lat_per_row))
+        dx_per_row = dlon_deg * cos_lat * _DEG_TO_M_LAT  # metres per pixel in x
+        dy = dlat_deg * _DEG_TO_M_LAT  # metres per pixel in y (constant)
+    else:
+        # UTM or other metric CRS: direct metric spacing
+        dx_per_row = None
+        dx = transform.a  # positive east
+        dy = -transform.e  # positive north
 
     rows = H - 1
     cols = W - 1
@@ -47,8 +76,14 @@ def compute_normals(
     xi = np.arange(W, dtype=np.float64)
     yi = np.arange(H, dtype=np.float64)
     xx, yy = np.meshgrid(xi, yi)
-    # UTM x increases east, y increases north (row index increases south)
-    vx = xx * dx
+
+    if is_geographic:
+        # x spacing varies by row
+        # vx[row, col] = col * dx_per_row[row]
+        vx = xx * dx_per_row[:, np.newaxis]
+    else:
+        vx = xx * dx
+
     vy = (H - 1 - yy) * dy  # flip so row 0 = north
     vz = dem_smooth
 
@@ -82,10 +117,11 @@ def get_normals_cached(
     bbox_key: tuple,
     dem: np.ndarray,
     transform: rasterio.transform.Affine,
+    crs=None,
 ) -> np.ndarray:
     cached = normals_cache.get(bbox_key)
     if cached is not None:
         return cached
-    n = compute_normals(dem, transform)
+    n = compute_normals(dem, transform, crs)
     normals_cache.set(bbox_key, n)
     return n

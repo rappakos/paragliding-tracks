@@ -43,9 +43,9 @@ def _parse_dt(dt_str: str) -> datetime:
 
 
 async def _get_normals(bb):
-    dem_arr, transform, _ = get_dem_array(bb)
+    dem_arr, transform, crs = get_dem_array(bb)
     qbbox = _quantise_bbox(bb)
-    return get_normals_cached(("normals", qbbox), dem_arr, transform)
+    return get_normals_cached(("normals_v2", qbbox), dem_arr, transform, crs)
 
 
 @router.get("/thermal")
