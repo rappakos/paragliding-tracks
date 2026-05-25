@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Thermal Trigger Visualizer
+cache/
+web/node_modules/
+web/public/
+web/dist/
+*.tif
+*.geotiff
