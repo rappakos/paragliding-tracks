@@ -31,15 +31,35 @@
     #panel .toggle-row label { margin-bottom: 0; flex: 1; }
     #arrow-svg {
       position: absolute;
-      bottom: 30px;
+      top: 10px;
       left: 10px;
+      width: 90px;
+      height: 90px;
       background: rgba(255,255,255,0.85);
       border-radius: 8px;
-      padding: 8px;
+      padding: 4px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
       z-index: 10;
     }
     #status { font-size: 11px; color: #888; margin-top: 6px; }
+
+    /* Mobile: compact panel */
+    @media (max-width: 600px) {
+      #panel {
+        top: auto;
+        bottom: 0;
+        right: 0;
+        left: 0;
+        border-radius: 12px 12px 0 0;
+        min-width: unset;
+        padding: 10px 12px;
+        max-height: 45vh;
+        overflow-y: auto;
+      }
+      #panel h2 { font-size: 13px; margin-bottom: 6px; }
+      #panel label { font-size: 11px; }
+      #arrow-svg { width: 70px; height: 70px; top: 8px; left: 8px; padding: 2px; }
+    }
   </style>
 </head>
 <body>
