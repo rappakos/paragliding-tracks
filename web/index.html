@@ -147,10 +147,13 @@
   (function() {
     const API_BASE = window.location.pathname.replace(/\/[^/]*$/, "");  // auto-detect sub-path
 
+    // ── Constants ─────────────────────────────────────────────────────────
+    const TRANSPARENT_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
     // ── Regions ───────────────────────────────────────────────────────────
     const REGIONS = {
       weserbergland: { bbox: [9.21, 51.74, 9.80, 52.12], zoom: 11 },
-      westharz:      { bbox: [10.1208, 51.4377, 11.1162, 51.9623], zoom: 10 },
+      westharz:      { bbox: [10.1208, 51.4377, 11.1162, 51.9623], zoom: 12, center: [10.43088409100252, 51.88986475598365] },
     };
     let BBOX = REGIONS.weserbergland.bbox;
     const CENTER_LON = (BBOX[0] + BBOX[2]) / 2;
@@ -253,9 +256,8 @@
     document.getElementById("region-select").addEventListener("change", (e) => {
       const region = REGIONS[e.target.value];
       BBOX = region.bbox;
-      const lon = (BBOX[0] + BBOX[2]) / 2;
-      const lat = (BBOX[1] + BBOX[3]) / 2;
-      map.flyTo({ center: [lon, lat], zoom: region.zoom });
+      const center = region.center || [(BBOX[0] + BBOX[2]) / 2, (BBOX[1] + BBOX[3]) / 2];
+      map.flyTo({ center: center, zoom: region.zoom });
       const coords = getOverlayCoords();
       map.getSource("thermal").setCoordinates(coords);
       map.getSource("wind-overlay").setCoordinates(coords);
@@ -274,6 +276,12 @@
       const dt = new Date(dtValue).toISOString();
       const bboxStr = BBOX.join(",");
       setStatus("Loading…");
+
+      // Clear overlays immediately so stale data isn't shown during load
+      const coords = getOverlayCoords();
+      map.getSource("thermal").updateImage({ url: TRANSPARENT_1PX, coordinates: coords });
+      map.getSource("wind-overlay").updateImage({ url: TRANSPARENT_1PX, coordinates: coords });
+      map.triggerRepaint();
 
       try {
         const [sunData, windData] = await Promise.all([
