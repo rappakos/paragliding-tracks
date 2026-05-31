@@ -21,14 +21,21 @@
       min-width: 260px;
       z-index: 10;
     }
-    #panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #333; }
-    #panel label { font-size: 12px; color: #555; display: block; margin-bottom: 2px; }
-    #panel input[type=datetime-local],
-    #panel input[type=range] { width: 100%; margin-bottom: 10px; }
-    #panel .toggle-row {
+    #panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #333; }
+    #panel label { font-size: 12px; color: #555; display: block; margin-bottom: 0; }
+    #panel .ctrl-row {
       display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
     }
-    #panel .toggle-row label { margin-bottom: 0; flex: 1; }
+    #panel .ctrl-row label { margin-bottom: 0; white-space: nowrap; width: 60px; flex-shrink: 0; font-size: 11px; }
+    #panel .ctrl-row select,
+    #panel .ctrl-row input[type=datetime-local] { flex: 1; min-width: 0; font-size: 11px; padding: 2px 4px; }
+    #panel .toggle-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    #panel .toggle-row input[type=checkbox] { margin: 0; flex-shrink: 0; }
+    #panel .toggle-row label { margin-bottom: 0; width: 52px; flex-shrink: 0; font-size: 11px; white-space: nowrap; }
+    #panel .toggle-row input[type=range] { flex: 1; min-width: 0; margin: 0; }
+    #panel input[type=range] { height: 4px; accent-color: #2563eb; }
     #arrow-svg {
       position: absolute;
       top: 10px;
@@ -90,30 +97,35 @@
     </div>
     <h2>☀ Thermal Trigger Visualizer</h2>
 
-    <label for="region-select" style="margin-bottom:2px;">Region</label>
-    <select id="region-select" style="width:100%;margin-bottom:10px;font-size:12px;padding:3px;">
-      <option value="weserbergland">Weserbergland</option>
-      <option value="westharz">Western Harz</option>
-    </select>
+    <div class="ctrl-row">
+      <label for="region-select">Region</label>
+      <select id="region-select">
+        <option value="weserbergland">Weserbergland</option>
+        <option value="westharz">Western Harz</option>
+      </select>
+    </div>
 
-    <label for="dt-picker">Date &amp; Time (local)</label>
-    <input type="datetime-local" id="dt-picker" />
+    <div class="ctrl-row">
+      <label for="dt-picker">Date/Time</label>
+      <input type="datetime-local" id="dt-picker" />
+    </div>
 
     <div class="toggle-row">
+      <span style="width:13px;flex-shrink:0"></span>
       <label for="opacity-map">🗺️ Map</label>
-      <input type="range" id="opacity-map" min="0" max="100" value="15" style="width:120px;margin-bottom:0" />
+      <input type="range" id="opacity-map" min="0" max="100" value="15" />
     </div>
 
     <div class="toggle-row">
       <input type="checkbox" id="toggle-thermal" checked />
-      <label for="toggle-thermal">☀ Thermal driving</label>
-      <input type="range" id="opacity-thermal" min="0" max="100" value="33" style="width:80px;margin-bottom:0" />
+      <label for="toggle-thermal">☀ Thermal</label>
+      <input type="range" id="opacity-thermal" min="0" max="100" value="33" />
     </div>
 
     <div class="toggle-row">
       <input type="checkbox" id="toggle-wind" checked />
-      <label for="toggle-wind">💨 Wind exposure</label>
-      <input type="range" id="opacity-wind" min="0" max="100" value="100" style="width:80px;margin-bottom:0" />
+      <label for="toggle-wind">💨 Wind</label>
+      <input type="range" id="opacity-wind" min="0" max="100" value="100" />
     </div>
 
     <div style="font-size:10px;color:#666;margin-top:8px;line-height:1.5;">
