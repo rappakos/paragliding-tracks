@@ -43,6 +43,24 @@
     }
     #status { font-size: 11px; color: #888; margin-top: 6px; }
 
+    #igc-section {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+    }
+    #igc-section summary { font-size: 12px; font-weight: 600; cursor: pointer; color: #333; }
+    #igc-section .igc-body { margin-top: 8px; }
+    #igc-section input[type=file] { font-size: 11px; margin-bottom: 6px; }
+    #igc-section button {
+      font-size: 11px; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer;
+    }
+    #igc-upload-btn { background: #2563eb; color: #fff; }
+    #igc-upload-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+    #igc-clear-btn { background: #dc2626; color: #fff; margin-left: 4px; }
+    #igc-info { font-size: 11px; color: #555; margin-top: 6px; line-height: 1.4; }
+    #igc-track-list { font-size: 11px; margin-top: 6px; }
+    #igc-track-list select { width: 100%; font-size: 11px; padding: 2px; }
+
     /* Mobile: compact panel */
     @media (max-width: 600px) {
       #panel {
@@ -105,6 +123,22 @@
     </div>
 
     <div id="status">Loading…</div>
+
+    <details id="igc-section" open>
+      <summary>🪂 IGC Track</summary>
+      <div class="igc-body">
+        <input type="file" id="igc-file" accept=".igc" />
+        <div>
+          <button id="igc-upload-btn" disabled>Upload</button>
+          <button id="igc-clear-btn" style="display:none">Clear</button>
+        </div>
+        <div id="igc-info"></div>
+        <div id="igc-track-list">
+          <label>Previous tracks:</label>
+          <select id="igc-select"><option value="">— none —</option></select>
+        </div>
+      </div>
+    </details>
   </div>
 
   <svg id="arrow-svg" width="130" height="130" viewBox="-65 -65 130 130">
@@ -231,8 +265,25 @@
       });
       map.addLayer({ id: "wind-layer", type: "raster", source: "wind-overlay", paint: { "raster-opacity": 1.0 } });
 
+      // Add IGC track source + layer (GeoJSON line)
+      map.addSource("track-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "track-layer",
+        type: "line",
+        source: "track-source",
+        paint: {
+          "line-color": "#e63946",
+          "line-width": 3,
+          "line-opacity": 0.85,
+        },
+      });
+
       // Initial data load
       refreshAll();
+      loadTrackList();
     });
 
     // ── Toggle + opacity ──────────────────────────────────────────────────
@@ -253,14 +304,30 @@
     });
 
     // ── Region switch ─────────────────────────────────────────────────────
-    document.getElementById("region-select").addEventListener("change", (e) => {
-      const region = REGIONS[e.target.value];
+    const regionSelect = document.getElementById("region-select");
+
+    function switchRegion(regionKey) {
+      const region = REGIONS[regionKey];
+      if (!region) return;
       BBOX = region.bbox;
-      const center = region.center || [(BBOX[0] + BBOX[2]) / 2, (BBOX[1] + BBOX[3]) / 2];
-      map.flyTo({ center: center, zoom: region.zoom });
+      regionSelect.value = regionKey;
       const coords = getOverlayCoords();
       map.getSource("thermal").setCoordinates(coords);
       map.getSource("wind-overlay").setCoordinates(coords);
+    }
+
+    function findRegionForPoint(lon, lat) {
+      for (const [key, region] of Object.entries(REGIONS)) {
+        const [w, s, e, n] = region.bbox;
+        if (lon >= w && lon <= e && lat >= s && lat <= n) return key;
+      }
+      return null;
+    }
+
+    regionSelect.addEventListener("change", (e) => {
+      switchRegion(e.target.value);
+      const center = REGIONS[e.target.value].center || [(BBOX[0] + BBOX[2]) / 2, (BBOX[1] + BBOX[3]) / 2];
+      map.flyTo({ center: center, zoom: REGIONS[e.target.value].zoom });
       refreshAll();
     });
 
@@ -331,6 +398,127 @@
 
       map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: getOverlayCoords() });
       map.triggerRepaint();
+    }
+
+    // ── IGC Track Upload & Selection ──────────────────────────────────────
+    const igcFileInput = document.getElementById("igc-file");
+    const igcUploadBtn = document.getElementById("igc-upload-btn");
+    const igcClearBtn = document.getElementById("igc-clear-btn");
+    const igcInfo = document.getElementById("igc-info");
+    const igcSelect = document.getElementById("igc-select");
+
+    igcFileInput.addEventListener("change", () => {
+      igcUploadBtn.disabled = !igcFileInput.files.length;
+    });
+
+    igcUploadBtn.addEventListener("click", async () => {
+      const file = igcFileInput.files[0];
+      if (!file) return;
+
+      igcUploadBtn.disabled = true;
+      setStatus("Uploading IGC…");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const resp = await fetch(API_BASE + "/igc/upload", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        const track = await resp.json();
+        showTrack(track);
+        loadTrackList();
+        setStatus("Track loaded.");
+      } catch (err) {
+        setStatus("Upload error: " + err.message);
+        console.error(err);
+      } finally {
+        igcUploadBtn.disabled = false;
+      }
+    });
+
+    igcClearBtn.addEventListener("click", () => {
+      clearTrack();
+      igcSelect.value = "";
+    });
+
+    igcSelect.addEventListener("change", async (e) => {
+      const id = e.target.value;
+      if (!id) { clearTrack(); return; }
+
+      setStatus("Loading track…");
+      try {
+        const track = await fetchJSON(`/igc/tracks/${id}`);
+        showTrack(track);
+      } catch (err) {
+        setStatus("Error: " + err.message);
+      }
+    });
+
+    function showTrack(track) {
+      // Display GeoJSON on map
+      map.getSource("track-source").setData(track.geojson);
+
+      // Show track info
+      const parts = [];
+      if (track.pilot) parts.push(`<b>Pilot:</b> ${escHtml(track.pilot)}`);
+      if (track.glider) parts.push(`<b>Glider:</b> ${escHtml(track.glider)}`);
+      if (track.start_time) parts.push(`<b>Start:</b> ${track.start_time.replace("T", " ").slice(0, 16)}`);
+      igcInfo.innerHTML = parts.join("<br/>");
+      igcClearBtn.style.display = "inline";
+
+      // Auto-detect matching region based on track center point
+      if (track.bbox && track.bbox.length === 4) {
+        const cx = (track.bbox[0] + track.bbox[2]) / 2;
+        const cy = (track.bbox[1] + track.bbox[3]) / 2;
+        const matchedRegion = findRegionForPoint(cx, cy);
+        if (matchedRegion) {
+          switchRegion(matchedRegion);
+        }
+        map.fitBounds([[track.bbox[0], track.bbox[1]], [track.bbox[2], track.bbox[3]]], { padding: 40 });
+      }
+
+      // Set datetime picker to track start time (if available) and refresh overlays
+      if (track.start_time) {
+        const dt = new Date(track.start_time);
+        if (!isNaN(dt.getTime())) {
+          const pad = (n) => String(n).padStart(2, "0");
+          dtPicker.value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        }
+      }
+      // Always refresh overlays after region/time change
+      refreshAll();
+    }
+
+    function clearTrack() {
+      map.getSource("track-source").setData({ type: "FeatureCollection", features: [] });
+      igcInfo.innerHTML = "";
+      igcClearBtn.style.display = "none";
+      // Reset to current time
+      dtPicker.value = nowLocalISO();
+      refreshAll();
+    }
+
+    async function loadTrackList() {
+      try {
+        const tracks = await fetchJSON("/igc/tracks");
+        igcSelect.innerHTML = '<option value="">— none —</option>';
+        for (const t of tracks) {
+          const label = `${t.filename} (${t.start_time ? t.start_time.slice(0, 10) : "?"})`;
+          igcSelect.innerHTML += `<option value="${t.id}">${escHtml(label)}</option>`;
+        }
+      } catch (e) {
+        // Track list is non-critical
+        console.warn("Failed to load track list:", e);
+      }
+    }
+
+    function escHtml(s) {
+      const el = document.createElement("span");
+      el.textContent = s;
+      return el.innerHTML;
     }
 
   })();
