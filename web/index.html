@@ -377,7 +377,9 @@
     }
 
     async function fetchJSON(url) {
-      const resp = await fetch(API_BASE + url);
+      const headers = {};
+      if (url.startsWith("/igc/")) headers["X-Owner-Token"] = OWNER_TOKEN;
+      const resp = await fetch(API_BASE + url, { headers });
       if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
       return resp.json();
     }
@@ -399,6 +401,17 @@
       map.getSource(sourceId).updateImage({ url: objectUrl, coordinates: getOverlayCoords() });
       map.triggerRepaint();
     }
+
+    // ── Owner token (localStorage) ───────────────────────────────────────
+    function getOwnerToken() {
+      let token = localStorage.getItem("ttv_owner_token");
+      if (!token) {
+        token = crypto.randomUUID();
+        localStorage.setItem("ttv_owner_token", token);
+      }
+      return token;
+    }
+    const OWNER_TOKEN = getOwnerToken();
 
     // ── IGC Track Upload & Selection ──────────────────────────────────────
     const igcFileInput = document.getElementById("igc-file");
@@ -422,7 +435,7 @@
       formData.append("file", file);
 
       try {
-        const resp = await fetch(API_BASE + "/igc/upload", { method: "POST", body: formData });
+        const resp = await fetch(API_BASE + "/igc/upload", { method: "POST", body: formData, headers: { "X-Owner-Token": OWNER_TOKEN } });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
           throw new Error(err.detail || `HTTP ${resp.status}`);

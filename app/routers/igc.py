@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Header, HTTPException, UploadFile
 
 from app.db import get_db
 from app.services.igc_analysis import parse_igc
@@ -13,7 +13,7 @@ _MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
 @router.post("/upload")
-async def upload_igc(file: UploadFile):
+async def upload_igc(file: UploadFile, x_owner_token: str = Header(default="")):
     """Upload and parse an IGC file. Stores processed track data in SQLite."""
     if not file.filename or not file.filename.lower().endswith(".igc"):
         raise HTTPException(status_code=400, detail="Only .igc files are accepted.")
@@ -28,9 +28,28 @@ async def upload_igc(file: UploadFile):
         raise HTTPException(status_code=400, detail=f"Failed to parse IGC file: {e}")
 
     with get_db() as conn:
+        # Deduplication: same filename + start_time + owner → return existing
+        existing = conn.execute(
+            "SELECT id, filename, pilot, glider, start_time, end_time, bbox, geojson FROM tracks WHERE filename = ? AND start_time = ? AND owner_token = ?",
+            (file.filename, parsed["start_time"], x_owner_token),
+        ).fetchone()
+
+        if existing:
+            return {
+                "id": existing["id"],
+                "filename": existing["filename"],
+                "pilot": existing["pilot"],
+                "glider": existing["glider"],
+                "start_time": existing["start_time"],
+                "end_time": existing["end_time"],
+                "bbox": json.loads(existing["bbox"]),
+                "geojson": json.loads(existing["geojson"]),
+                "duplicate": True,
+            }
+
         cur = conn.execute(
-            """INSERT INTO tracks (filename, pilot, glider, start_time, end_time, bbox, geojson)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO tracks (filename, pilot, glider, start_time, end_time, bbox, geojson, owner_token)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 file.filename,
                 parsed["pilot"],
@@ -39,6 +58,7 @@ async def upload_igc(file: UploadFile):
                 parsed["end_time"],
                 parsed["bbox"],
                 parsed["geojson"],
+                x_owner_token,
             ),
         )
         conn.commit()
@@ -57,11 +77,12 @@ async def upload_igc(file: UploadFile):
 
 
 @router.get("/tracks")
-async def list_tracks():
-    """List all stored tracks (without full GeoJSON)."""
+async def list_tracks(x_owner_token: str = Header(default="")):
+    """List tracks belonging to this owner token."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, filename, pilot, glider, start_time, end_time, bbox, created_at FROM tracks ORDER BY created_at DESC"
+            "SELECT id, filename, pilot, glider, start_time, end_time, bbox, created_at FROM tracks WHERE owner_token = ? ORDER BY created_at DESC",
+            (x_owner_token,),
         ).fetchall()
 
     return [
@@ -80,10 +101,12 @@ async def list_tracks():
 
 
 @router.get("/tracks/{track_id}")
-async def get_track(track_id: int):
-    """Get a single track with full GeoJSON."""
+async def get_track(track_id: int, x_owner_token: str = Header(default="")):
+    """Get a single track with full GeoJSON (must match owner)."""
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM tracks WHERE id = ? AND owner_token = ?", (track_id, x_owner_token)
+        ).fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="Track not found.")
@@ -102,10 +125,12 @@ async def get_track(track_id: int):
 
 
 @router.delete("/tracks/{track_id}")
-async def delete_track(track_id: int):
-    """Delete a track."""
+async def delete_track(track_id: int, x_owner_token: str = Header(default="")):
+    """Delete a track (must match owner)."""
     with get_db() as conn:
-        cur = conn.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
+        cur = conn.execute(
+            "DELETE FROM tracks WHERE id = ? AND owner_token = ?", (track_id, x_owner_token)
+        )
         conn.commit()
 
     if cur.rowcount == 0:

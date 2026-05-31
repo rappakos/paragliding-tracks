@@ -17,8 +17,10 @@ CREATE TABLE IF NOT EXISTS tracks (
     end_time TEXT NOT NULL,
     bbox TEXT NOT NULL,
     geojson TEXT NOT NULL,
+    owner_token TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_dedup ON tracks(filename, start_time, owner_token);
 """
 
 
