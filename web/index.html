@@ -123,6 +123,60 @@
     #profile-selection-info {
       font-size: 10px; color: #666; margin-top: 2px;
     }
+
+    /* Dual-handle range slider */
+    .dual-range input[type=range] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+    }
+    .dual-range input[type=range]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+    }
+    .dual-range input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #2563eb;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      margin-top: -6px;
+      pointer-events: auto;
+      cursor: grab;
+    }
+    .dual-range input[type=range]::-moz-range-track {
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+    }
+    .dual-range input[type=range]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #2563eb;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      pointer-events: auto;
+      cursor: grab;
+    }
+    /* Second thumb (end) gets a different color */
+    .dual-range input[type=range]#range-end::-webkit-slider-thumb {
+      background: #e63946;
+    }
+    .dual-range input[type=range]#range-end::-moz-range-thumb {
+      background: #e63946;
+    }
   </style>
 </head>
 <body>
@@ -200,6 +254,16 @@
       </div>
     </div>
     <div id="profile-chart"></div>
+    <div id="profile-range" style="display:none;padding:2px 10px 4px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#666;">
+        <span id="range-start-label" style="min-width:40px;">--:--</span>
+        <div class="dual-range" style="flex:1;position:relative;height:20px;">
+          <input type="range" id="range-start" min="0" max="100" value="0" />
+          <input type="range" id="range-end" min="0" max="100" value="100" />
+        </div>
+        <span id="range-end-label" style="min-width:40px;text-align:right;">--:--</span>
+      </div>
+    </div>
   </div>
 
   <svg id="arrow-svg" width="130" height="130" viewBox="-65 -65 130 130">
@@ -669,6 +733,11 @@
       profilePanel.classList.add("visible");
       profileChart.innerHTML = "";
 
+      function fmtRangeTime(epoch) {
+        const d = new Date(epoch * 1000);
+        return d.getHours().toString().padStart(2,"0") + ":" + d.getMinutes().toString().padStart(2,"0");
+      }
+
       // Adjust map padding for profile panel
       map.easeTo({ padding: { bottom: 160 }, duration: 300 });
 
@@ -709,12 +778,60 @@
               const altGain = Math.round(alts[endIdx] - alts[startIdx]);
               profileSelInfo.textContent = `| ${dt} min, Δalt ${altGain > 0 ? "+" : ""}${altGain}m (fixes ${startIdx}–${endIdx})`;
               highlightSegment(startIdx, endIdx);
+              // Sync range sliders
+              const rs = document.getElementById("range-start");
+              const re = document.getElementById("range-end");
+              if (rs && re) {
+                rs.value = startIdx;
+                re.value = endIdx;
+                document.getElementById("range-start-label").textContent = fmtRangeTime(times[startIdx]);
+                document.getElementById("range-end-label").textContent = fmtRangeTime(times[endIdx]);
+              }
             }
           }],
         },
       };
 
       profilePlot = new uPlot(opts, [times, alts], profileChart);
+
+      // ── Range sliders for touch devices ──
+      const profileRange = document.getElementById("profile-range");
+      const rangeStart = document.getElementById("range-start");
+      const rangeEnd = document.getElementById("range-end");
+      const rangeStartLabel = document.getElementById("range-start-label");
+      const rangeEndLabel = document.getElementById("range-end-label");
+      const maxIdx = times.length - 1;
+
+      rangeStart.max = maxIdx;
+      rangeEnd.max = maxIdx;
+      rangeStart.value = 0;
+      rangeEnd.value = maxIdx;
+      profileRange.style.display = "";
+
+      rangeStartLabel.textContent = fmtRangeTime(times[0]);
+      rangeEndLabel.textContent = fmtRangeTime(times[maxIdx]);
+
+      function onRangeChange() {
+        let si = parseInt(rangeStart.value);
+        let ei = parseInt(rangeEnd.value);
+        if (si >= ei) { ei = Math.min(si + 10, maxIdx); rangeEnd.value = ei; }
+        rangeStartLabel.textContent = fmtRangeTime(times[si]);
+        rangeEndLabel.textContent = fmtRangeTime(times[ei]);
+        selectedRange = { startIdx: si, endIdx: ei };
+        profileAnalyzeBtn.disabled = false;
+        const dt = ((times[ei] - times[si]) / 60).toFixed(1);
+        const altGain = Math.round(alts[ei] - alts[si]);
+        profileSelInfo.textContent = `| ${dt} min, Δalt ${altGain > 0 ? "+" : ""}${altGain}m (fixes ${si}–${ei})`;
+        highlightSegment(si, ei);
+        // Sync uPlot selection visual
+        if (profilePlot) {
+          const left = profilePlot.valToPos(times[si], "x");
+          const right = profilePlot.valToPos(times[ei], "x");
+          profilePlot.setSelect({ left, width: right - left, top: 0, height: profilePlot.over.clientHeight }, false);
+        }
+      }
+      rangeStart.addEventListener("input", onRangeChange);
+      rangeEnd.addEventListener("input", onRangeChange);
 
       // Resize handling
       const ro = new ResizeObserver(() => {
@@ -736,6 +853,7 @@
     function hideProfile() {
       profilePanel.classList.remove("visible");
       if (profilePlot) { profilePlot.destroy(); profilePlot = null; }
+      document.getElementById("profile-range").style.display = "none";
       currentTrackData = null;
       selectedRange = null;
       map.easeTo({ padding: { bottom: 0 }, duration: 300 });
