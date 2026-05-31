@@ -60,7 +60,7 @@ def wind_state(lat: float, lon: float, when_utc: datetime) -> WindState:
 
 
 def _fetch_wind(lat: float, lon: float, when_utc: datetime) -> WindState:
-    """Fetch real wind data from open-meteo."""
+    """Fetch real wind data from open-meteo (forecast or historical archive)."""
     date_str = when_utc.strftime("%Y-%m-%d")
     hour = when_utc.hour
 
@@ -82,8 +82,16 @@ def _fetch_wind(lat: float, lon: float, when_utc: datetime) -> WindState:
         "timezone": "UTC",
     }
 
+    # Use historical archive API for dates older than 5 days
+    now = datetime.now(timezone.utc)
+    days_ago = (now - when_utc).days
+    if days_ago > 5:
+        api_url = "https://archive-api.open-meteo.com/v1/archive"
+    else:
+        api_url = f"{settings.openmeteo_base}/forecast"
+
     with httpx.Client(timeout=15.0) as client:
-        resp = client.get(f"{settings.openmeteo_base}/forecast", params=params)
+        resp = client.get(api_url, params=params)
         resp.raise_for_status()
         data = resp.json()
 
