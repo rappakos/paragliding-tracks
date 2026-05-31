@@ -19,6 +19,8 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "py3dep>=0.17.0",
+    "aerofiles>=0.5.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +31,6 @@ dev = [
     "httpx>=0.27.0",
 ]
 igc = [
-    "aerofiles>=0.5.0",
     "filterpy>=1.4.5",
 ]
 

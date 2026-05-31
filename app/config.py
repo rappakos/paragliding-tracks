@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Overlay cache TTL in seconds
     overlay_ttl: int = 300
 
+    # SQLite database path for IGC track storage
+    db_path: str = "data/tracks.db"
+
     def bbox_tuple(self) -> Tuple[float, float, float, float]:
         parts = [float(x) for x in self.default_bbox.split(",")]
         return (parts[0], parts[1], parts[2], parts[3])

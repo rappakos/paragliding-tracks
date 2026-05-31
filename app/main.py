@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,14 +10,23 @@ from fastapi.responses import FileResponse
 import os
 
 from app.config import settings
+from app.db import init_db
 from app.routers import dem, weather, overlays, igc
 
 logging.basicConfig(level=settings.log_level)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Thermal Trigger Visualizer",
     description="Paragliding thermal trigger visualizer for German flatlands.",
-    version="0.1.0",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

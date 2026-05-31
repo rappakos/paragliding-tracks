@@ -219,6 +219,7 @@ __marimo__/
 
 # Thermal Trigger Visualizer
 cache/
+data/
 web/node_modules/
 web/public/
 web/dist/

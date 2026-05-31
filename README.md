@@ -1,6 +1,6 @@
 # paragliding-tracks
 
-Thermal Trigger Visualizer for paragliding in the German flatlands (Weserbergland).
+Thermal Trigger Visualizer for paragliding in the German flatlands (Weserbergland, Harz).
 
 ## What it does
 
