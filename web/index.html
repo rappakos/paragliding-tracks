@@ -95,7 +95,7 @@
       bottom: 8px;
       left: 8px;
       right: 8px;
-      height: 160px;
+      height: 180px;
       background: rgba(255,255,255,0.95);
       border: 1px solid #d1d5db;
       border-radius: 8px;
@@ -119,7 +119,7 @@
     #profile-panel .profile-header button.primary:disabled {
       background: #94a3b8; border-color: #94a3b8; cursor: not-allowed;
     }
-    #profile-chart { width: 100%; height: 120px; }
+    #profile-chart { width: 100%; height: 130px; overflow: visible; }
     #profile-selection-info {
       font-size: 10px; color: #666; margin-top: 2px;
     }
@@ -137,10 +137,19 @@
       appearance: none;
       background: transparent;
     }
+    .dual-range input[type=range]#range-start {
+      z-index: 2;
+    }
+    .dual-range input[type=range]#range-end {
+      z-index: 1;
+    }
     .dual-range input[type=range]::-webkit-slider-runnable-track {
       height: 4px;
-      background: #e5e7eb;
+      background: transparent;
       border-radius: 2px;
+    }
+    .dual-range input[type=range]#range-end::-webkit-slider-runnable-track {
+      background: rgba(37,99,235,0.2);
     }
     .dual-range input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -157,7 +166,7 @@
     }
     .dual-range input[type=range]::-moz-range-track {
       height: 4px;
-      background: #e5e7eb;
+      background: transparent;
       border-radius: 2px;
     }
     .dual-range input[type=range]::-moz-range-thumb {
@@ -253,15 +262,16 @@
         <button id="profile-close-btn">✕</button>
       </div>
     </div>
-    <div id="profile-chart"></div>
-    <div id="profile-range" style="display:none;padding:2px 10px 4px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:#666;">
-        <span id="range-start-label" style="min-width:40px;">--:--</span>
-        <div class="dual-range" style="flex:1;position:relative;height:20px;">
-          <input type="range" id="range-start" min="0" max="100" value="0" />
-          <input type="range" id="range-end" min="0" max="100" value="100" />
+    <div id="profile-chart" style="position:relative;">
+      <div id="profile-range" style="display:none;position:absolute;bottom:24px;left:50px;right:10px;z-index:5;">
+        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#666;">
+          <span id="range-start-label" style="min-width:32px;background:rgba(255,255,255,0.8);border-radius:2px;padding:0 2px;">--:--</span>
+          <div class="dual-range" style="flex:1;position:relative;height:20px;">
+            <input type="range" id="range-start" min="0" max="100" value="0" />
+            <input type="range" id="range-end" min="0" max="100" value="100" />
+          </div>
+          <span id="range-end-label" style="min-width:32px;text-align:right;background:rgba(255,255,255,0.8);border-radius:2px;padding:0 2px;">--:--</span>
         </div>
-        <span id="range-end-label" style="min-width:40px;text-align:right;">--:--</span>
       </div>
     </div>
   </div>
@@ -739,11 +749,11 @@
       }
 
       // Adjust map padding for profile panel
-      map.easeTo({ padding: { bottom: 160 }, duration: 300 });
+      map.easeTo({ padding: { bottom: 180 }, duration: 300 });
 
       const opts = {
         width: profileChart.clientWidth || 600,
-        height: 120,
+        height: 140,
         cursor: { drag: { x: true, y: false, setScale: false } },
         select: { show: true },
         scales: {
@@ -835,7 +845,7 @@
 
       // Resize handling
       const ro = new ResizeObserver(() => {
-        if (profilePlot) profilePlot.setSize({ width: profileChart.clientWidth, height: 120 });
+        if (profilePlot) profilePlot.setSize({ width: profileChart.clientWidth, height: 140 });
       });
       ro.observe(profileChart);
     }
