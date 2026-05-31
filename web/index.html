@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Thermal Trigger Visualizer</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.3.2/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.30/dist/uPlot.min.css" />
+  <script src="https://unpkg.com/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
@@ -84,6 +86,42 @@
       #panel h2 { font-size: 13px; margin-bottom: 6px; }
       #panel label { font-size: 11px; }
       #arrow-svg { width: 70px; height: 70px; top: 8px; left: 8px; padding: 2px; }
+      #profile-panel { height: 120px; }
+    }
+
+    #profile-panel {
+      display: none;
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+      height: 160px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+      z-index: 10;
+      padding: 6px 10px 2px 10px;
+    }
+    #profile-panel.visible { display: block; }
+    #profile-panel .profile-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 4px; font-size: 11px; color: #555;
+    }
+    #profile-panel .profile-header button {
+      font-size: 10px; padding: 2px 8px; border: 1px solid #d1d5db; border-radius: 3px;
+      background: #fff; cursor: pointer;
+    }
+    #profile-panel .profile-header button:hover { background: #f3f4f6; }
+    #profile-panel .profile-header button.primary {
+      background: #2563eb; color: #fff; border-color: #2563eb;
+    }
+    #profile-panel .profile-header button.primary:disabled {
+      background: #94a3b8; border-color: #94a3b8; cursor: not-allowed;
+    }
+    #profile-chart { width: 100%; height: 120px; }
+    #profile-selection-info {
+      font-size: 10px; color: #666; margin-top: 2px;
     }
   </style>
 </head>
@@ -131,26 +169,37 @@
     <div style="font-size:10px;color:#666;margin-top:8px;line-height:1.5;">
       <b>Legend:</b><br/>
       Thermal: <span style="color:#f59e0b;">■</span> orange–magenta = strong slope heating<br/>
-      Wind: <span style="color:#d4b200;">■</span> yellow = luv (windward), <span style="color:#3b82f6;">■</span> blue = lee
+      Wind: <span style="color:#d4b200;">■</span> yellow = luv (windward), <span style="color:#3b82f6;">■</span> blue = lee<br/>
+      Analysis: <span style="color:#7c3aed;">┈┈</span> thermal core axis, <span style="color:#f59e0b;">●</span> trigger point
     </div>
 
     <div id="status">Loading…</div>
 
     <details id="igc-section" open>
-      <summary>🪂 IGC Track</summary>
+      <summary>🪂 IGC Track <span id="igc-summary" style="font-weight:400;color:#888;">— no track selected</span></summary>
       <div class="igc-body">
-        <input type="file" id="igc-file" accept=".igc" />
-        <div>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <input type="file" id="igc-file" accept=".igc" style="flex:1;min-width:120px;" />
           <button id="igc-upload-btn" disabled>Upload</button>
           <button id="igc-clear-btn" style="display:none">Clear</button>
         </div>
-        <div id="igc-info"></div>
-        <div id="igc-track-list">
-          <label>Previous tracks:</label>
-          <select id="igc-select"><option value="">— none —</option></select>
+        <div id="igc-info" style="display:none;"></div>
+        <div id="igc-track-list" style="margin-top:4px;">
+          <select id="igc-select" style="width:100%;font-size:11px;padding:2px;"><option value="">— none —</option></select>
         </div>
       </div>
     </details>
+  </div>
+
+  <div id="profile-panel">
+    <div class="profile-header">
+      <span>📈 Altitude Profile <span id="profile-selection-info"></span></span>
+      <div>
+        <button id="profile-analyze-btn" class="primary" disabled>Analyze</button>
+        <button id="profile-close-btn">✕</button>
+      </div>
+    </div>
+    <div id="profile-chart"></div>
   </div>
 
   <svg id="arrow-svg" width="130" height="130" viewBox="-65 -65 130 130">
@@ -290,6 +339,57 @@
           "line-color": "#e63946",
           "line-width": 3,
           "line-opacity": 0.85,
+        },
+      });
+
+      // Highlight layer for selected thermal segment
+      map.addSource("track-highlight-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "track-highlight-layer",
+        type: "line",
+        source: "track-highlight-source",
+        paint: {
+          "line-color": "#facc15",
+          "line-width": 5,
+          "line-opacity": 0.9,
+        },
+      });
+
+      // Analysis core line layer
+      map.addSource("core-line-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "core-line-layer",
+        type: "line",
+        source: "core-line-source",
+        paint: {
+          "line-color": "#7c3aed",
+          "line-width": 3,
+          "line-dasharray": [4, 3],
+          "line-opacity": 0.9,
+        },
+      });
+
+      // Trigger point (ground extrapolation) marker layer
+      map.addSource("trigger-point-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "trigger-point-layer",
+        type: "circle",
+        source: "trigger-point-source",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#f59e0b",
+          "circle-stroke-color": "#7c3aed",
+          "circle-stroke-width": 2,
+          "circle-opacity": 0.9,
         },
       });
 
@@ -494,6 +594,12 @@
       igcInfo.innerHTML = parts.join("<br/>");
       igcClearBtn.style.display = "inline";
 
+      // Update compact summary
+      const summaryParts = [];
+      if (track.pilot) summaryParts.push(track.pilot);
+      if (track.start_time) summaryParts.push(track.start_time.slice(0, 10));
+      document.getElementById("igc-summary").textContent = summaryParts.length ? `(${summaryParts.join(", ")})` : "";
+
       // Auto-detect matching region based on track center point
       if (track.bbox && track.bbox.length === 4) {
         const cx = (track.bbox[0] + track.bbox[2]) / 2;
@@ -515,16 +621,171 @@
       }
       // Always refresh overlays after region/time change
       refreshAll();
+
+      // Show altitude profile chart
+      if (track.geojson && track.geojson.properties && track.geojson.properties.times) {
+        showProfile(track.geojson, track.id);
+      }
     }
 
     function clearTrack() {
       map.getSource("track-source").setData({ type: "FeatureCollection", features: [] });
+      map.getSource("track-highlight-source").setData({ type: "FeatureCollection", features: [] });
+      map.getSource("core-line-source").setData({ type: "FeatureCollection", features: [] });
+      map.getSource("trigger-point-source").setData({ type: "FeatureCollection", features: [] });
       igcInfo.innerHTML = "";
       igcClearBtn.style.display = "none";
+      document.getElementById("igc-summary").textContent = "— no track selected";
+      hideProfile();
       // Reset to current time
       dtPicker.value = nowLocalISO();
       refreshAll();
     }
+
+    // ── Altitude Profile Chart ────────────────────────────────────────────
+    const profilePanel = document.getElementById("profile-panel");
+    const profileChart = document.getElementById("profile-chart");
+    const profileSelInfo = document.getElementById("profile-selection-info");
+    const profileAnalyzeBtn = document.getElementById("profile-analyze-btn");
+    const profileCloseBtn = document.getElementById("profile-close-btn");
+
+    let currentTrackData = null;  // { times, alts, coords, trackId }
+    let profilePlot = null;
+    let selectedRange = null;  // { startIdx, endIdx }
+
+    function showProfile(geojson, trackId) {
+      const props = geojson.properties || {};
+      const coords = geojson.geometry?.coordinates || [];
+      const times = props.times;
+
+      if (!times || times.length < 2) return;
+
+      const alts = coords.map(c => c[2] || 0);
+      currentTrackData = { times, alts, coords, trackId };
+      selectedRange = null;
+      profileAnalyzeBtn.disabled = true;
+      profileSelInfo.textContent = "";
+
+      profilePanel.classList.add("visible");
+      profileChart.innerHTML = "";
+
+      // Adjust map padding for profile panel
+      map.easeTo({ padding: { bottom: 160 }, duration: 300 });
+
+      const opts = {
+        width: profileChart.clientWidth || 600,
+        height: 120,
+        cursor: { drag: { x: true, y: false, setScale: false } },
+        select: { show: true },
+        scales: {
+          x: { time: true },
+          y: { auto: true },
+        },
+        axes: [
+          { size: 30, font: "10px system-ui", stroke: "#888" },
+          { size: 50, font: "10px system-ui", stroke: "#888", values: (u, vals) => vals.map(v => v + "m") },
+        ],
+        series: [
+          {},
+          { stroke: "#e63946", width: 1.5, fill: "rgba(230,57,70,0.08)", label: "Alt (m)" },
+        ],
+        hooks: {
+          setSelect: [(u) => {
+            const left = u.select.left;
+            const width = u.select.width;
+            if (width < 3) {
+              selectedRange = null;
+              profileAnalyzeBtn.disabled = true;
+              profileSelInfo.textContent = "";
+              map.getSource("track-highlight-source").setData({ type: "FeatureCollection", features: [] });
+              return;
+            }
+            const startIdx = u.posToIdx(left);
+            const endIdx = u.posToIdx(left + width);
+            if (startIdx >= 0 && endIdx > startIdx) {
+              selectedRange = { startIdx, endIdx };
+              profileAnalyzeBtn.disabled = false;
+              const dt = ((times[endIdx] - times[startIdx]) / 60).toFixed(1);
+              const altGain = Math.round(alts[endIdx] - alts[startIdx]);
+              profileSelInfo.textContent = `| ${dt} min, Δalt ${altGain > 0 ? "+" : ""}${altGain}m (fixes ${startIdx}–${endIdx})`;
+              highlightSegment(startIdx, endIdx);
+            }
+          }],
+        },
+      };
+
+      profilePlot = new uPlot(opts, [times, alts], profileChart);
+
+      // Resize handling
+      const ro = new ResizeObserver(() => {
+        if (profilePlot) profilePlot.setSize({ width: profileChart.clientWidth, height: 120 });
+      });
+      ro.observe(profileChart);
+    }
+
+    function highlightSegment(startIdx, endIdx) {
+      if (!currentTrackData) return;
+      const segCoords = currentTrackData.coords.slice(startIdx, endIdx + 1);
+      const highlight = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: segCoords },
+      };
+      map.getSource("track-highlight-source").setData(highlight);
+    }
+
+    function hideProfile() {
+      profilePanel.classList.remove("visible");
+      if (profilePlot) { profilePlot.destroy(); profilePlot = null; }
+      currentTrackData = null;
+      selectedRange = null;
+      map.easeTo({ padding: { bottom: 0 }, duration: 300 });
+    }
+
+    profileCloseBtn.addEventListener("click", hideProfile);
+
+    profileAnalyzeBtn.addEventListener("click", async () => {
+      if (!selectedRange || !currentTrackData) return;
+      profileAnalyzeBtn.disabled = true;
+      setStatus("Analyzing thermal…");
+      try {
+        const resp = await fetch(API_BASE + `/igc/tracks/${currentTrackData.trackId}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Owner-Token": OWNER_TOKEN },
+          body: JSON.stringify({ start_idx: selectedRange.startIdx, end_idx: selectedRange.endIdx }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        const result = await resp.json();
+        // Show core line on map
+        if (result.core_line) {
+          map.getSource("core-line-source").setData(result.core_line);
+        }
+        // Show trigger point marker on map
+        if (result.trigger_point) {
+          const tp = {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: result.trigger_point },
+            properties: { ground_elevation: result.ground_elevation },
+          };
+          map.getSource("trigger-point-source").setData(tp);
+        }
+        // Show stats
+        const stats = [];
+        if (result.avg_climb_rate != null) stats.push(`Climb: ${result.avg_climb_rate.toFixed(1)} m/s`);
+        if (result.altitude_gain != null) stats.push(`ΔAlt: +${Math.round(result.altitude_gain)}m`);
+        if (result.n_turns != null) stats.push(`Turns: ${result.n_turns}`);
+        if (result.drift_speed != null) stats.push(`Drift: ${result.drift_speed.toFixed(1)} m/s @ ${Math.round(result.drift_bearing)}°`);
+        if (result.ground_elevation != null) stats.push(`GND: ${Math.round(result.ground_elevation)}m`);
+        profileSelInfo.textContent = `| ${stats.join(" | ")}`;
+        setStatus("Analysis complete.");
+      } catch (err) {
+        setStatus("Analysis error: " + err.message);
+      } finally {
+        profileAnalyzeBtn.disabled = false;
+      }
+    });
 
     async function loadTrackList() {
       try {

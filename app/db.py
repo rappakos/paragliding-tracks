@@ -7,7 +7,14 @@ from contextlib import contextmanager
 
 from app.config import settings
 
+# Bump this when schema changes. DB will be dropped and recreated.
+_SCHEMA_VERSION = 2
+
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS _meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     filename TEXT NOT NULL,
@@ -29,11 +36,41 @@ def _db_path() -> str:
 
 
 def init_db() -> None:
-    """Create database file and tables if they don't exist."""
+    """Create database file and tables if they don't exist.
+
+    If the schema version doesn't match, the DB is dropped and recreated.
+    """
     path = _db_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path):
+        with sqlite3.connect(path) as conn:
+            try:
+                row = conn.execute("SELECT value FROM _meta WHERE key = 'schema_version'").fetchone()
+                existing_version = int(row[0]) if row else 0
+            except sqlite3.OperationalError:
+                existing_version = 0
+
+        if existing_version != _SCHEMA_VERSION:
+            try:
+                os.remove(path)
+            except OSError:
+                # File locked (Windows) — drop user tables in-place instead
+                with sqlite3.connect(path) as conn:
+                    tables = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                    ).fetchall()
+                    for (name,) in tables:
+                        conn.execute(f"DROP TABLE IF EXISTS [{name}]")
+                    conn.commit()
+
     with sqlite3.connect(path) as conn:
         conn.executescript(_SCHEMA)
+        conn.execute(
+            "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', ?)",
+            (str(_SCHEMA_VERSION),),
+        )
+        conn.commit()
 
 
 @contextmanager

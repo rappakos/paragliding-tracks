@@ -31,35 +31,38 @@ def parse_igc(data: bytes) -> dict:
     if not fixes:
         raise ValueError("IGC file contains no GPS fixes (B-records).")
 
-    # Build coordinate list and compute bbox
+    # Build coordinate list, timestamps, and compute bbox
     coords: list[list[float]] = []
+    times: list[float] = []
+    pressure_alts: list[float] = []
     lats: list[float] = []
     lons: list[float] = []
 
     for fix in fixes:
         lat = fix.get("lat")
         lon = fix.get("lon")
-        alt = fix.get("gps_alt") or fix.get("pressure_alt") or 0
-        if lat is None or lon is None:
+        gps_alt = fix.get("gps_alt") or 0
+        p_alt = fix.get("pressure_alt") or 0
+        alt = gps_alt or p_alt
+        dt = fix.get("datetime")
+        if lat is None or lon is None or dt is None:
             continue
         coords.append([lon, lat, alt])
+        times.append(dt.timestamp())
+        pressure_alts.append(p_alt)
         lats.append(lat)
         lons.append(lon)
 
     if len(coords) < 2:
         raise ValueError("IGC file contains fewer than 2 valid GPS fixes.")
 
-    # Timestamps — aerofiles provides a combined datetime on each fix
-    start_dt = fixes[0].get("datetime")
-    end_dt = fixes[-1].get("datetime")
-
-    start_time = start_dt.isoformat() if start_dt else ""
-    end_time = end_dt.isoformat() if end_dt else ""
+    start_time = fixes[0].get("datetime").isoformat() if fixes[0].get("datetime") else ""
+    end_time = fixes[-1].get("datetime").isoformat() if fixes[-1].get("datetime") else ""
 
     # Bounding box [W, S, E, N]
     bbox = [min(lons), min(lats), max(lons), max(lats)]
 
-    # GeoJSON LineString
+    # GeoJSON LineString with per-fix timestamps
     geojson = {
         "type": "Feature",
         "geometry": {
@@ -71,6 +74,8 @@ def parse_igc(data: bytes) -> dict:
             "glider": glider,
             "start_time": start_time,
             "end_time": end_time,
+            "times": times,
+            "pressure_alts": pressure_alts,
         },
     }
 

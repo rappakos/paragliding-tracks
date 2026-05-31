@@ -52,3 +52,53 @@ Environment variables (or `.env`):
 | `OPENTOPOGRAPHY_API_KEY` | – | Required for DEM download |
 | `OVERLAY_TTL` | `300` | Cache TTL for overlays (seconds) |
 | `DEM_RES_M` | `30` | DEM resolution in metres |
+
+## Thermal Core Analysis
+
+### IGC Track Upload
+
+Upload `.igc` files to visualize paraglider flight tracks on the map. The system extracts per-fix GPS coordinates, timestamps, and altitudes. An interactive altitude-vs-time chart (uPlot) lets you select thermal segments for analysis.
+
+### Linear Regression (zeroth approximation)
+
+For a selected climbing segment, a linear regression estimates the thermal core position `(x_c, y_c)` as a function of altitude:
+
+```
+x_core(z) = a_x · z + b_x
+y_core(z) = a_y · z + b_y
+```
+
+This gives:
+- **Core line**: projected path of the thermal center from ground to top
+- **Drift vector**: direction and speed of horizontal thermal drift (driven by wind profile)
+- **Climb rate**: average vertical speed during the segment
+- **Turn count**: estimated full circles from unwrapped angular position
+
+### Kalman Filter Model (planned)
+
+A more rigorous approach models the problem as state estimation:
+
+**Hidden state** (per altitude layer):
+- `(x_c, y_c)` – thermal core position at elevation `z`
+- Systematic drift: `(vx_drift, vy_drift)` from meteo wind at that altitude
+
+**Observation model**:
+- Pilot GPS position = core + `R · [cos(θ), sin(θ)]`
+- `θ` rotates at `v_tangential / R` ≈ 9 m/s tangential speed
+- Pilot descends relative to air at `v_sink` ≈ 1.3 m/s
+
+**Noise sources**:
+- Thermal turbulence (core position jitter)
+- Imperfect pilot input (radius variation, speed variation)
+- GPS measurement noise
+
+The `filterpy` library (optional dependency: `pip install -e ".[igc]"`) provides the Extended Kalman Filter implementation for this model.
+
+### API Endpoint
+
+```
+POST /igc/tracks/{id}/analyze
+Body: { "start_idx": 120, "end_idx": 450 }
+```
+
+Returns: `core_line` (GeoJSON), `avg_climb_rate`, `altitude_gain`, `n_turns`, `drift_bearing`, `drift_speed`.

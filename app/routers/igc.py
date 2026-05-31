@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Header, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from app.db import get_db
 from app.services.igc_analysis import parse_igc
+from app.services.thermal_analysis import analyze_thermal_segment
 
 router = APIRouter(prefix="/igc", tags=["igc"])
 
@@ -137,3 +139,37 @@ async def delete_track(track_id: int, x_owner_token: str = Header(default="")):
         raise HTTPException(status_code=404, detail="Track not found.")
 
     return {"deleted": track_id}
+
+
+class AnalyzeRequest(BaseModel):
+    start_idx: int
+    end_idx: int
+
+
+@router.post("/tracks/{track_id}/analyze")
+async def analyze_track(track_id: int, body: AnalyzeRequest, x_owner_token: str = Header(default="")):
+    """Analyze a thermal segment of a track (linear regression on core position)."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT geojson FROM tracks WHERE id = ? AND owner_token = ?", (track_id, x_owner_token)
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Track not found.")
+
+    geojson = json.loads(row["geojson"])
+    coords = geojson.get("geometry", {}).get("coordinates", [])
+    times = geojson.get("properties", {}).get("times", [])
+
+    if not times:
+        raise HTTPException(status_code=400, detail="Track has no timestamp data. Please re-upload.")
+
+    if body.start_idx < 0 or body.end_idx >= len(coords) or body.start_idx >= body.end_idx:
+        raise HTTPException(status_code=400, detail="Invalid index range.")
+
+    try:
+        result = analyze_thermal_segment(coords, times, body.start_idx, body.end_idx)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
