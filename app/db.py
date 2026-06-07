@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS tracks (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_dedup ON tracks(filename, start_time, owner_token);
+CREATE TABLE IF NOT EXISTS bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER,                      -- soft ref (nullable; track may be deleted)
+    track_filename TEXT NOT NULL,          -- denormalized, survives track deletion
+    name TEXT NOT NULL DEFAULT '',         -- user-editable
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    start_idx INTEGER NOT NULL,            -- provenance only
+    end_idx INTEGER NOT NULL,
+    fixes TEXT NOT NULL,                   -- JSON {"coords":[[lon,lat,alt],...],"times":[epoch,...]}
+    weather TEXT,                          -- JSON {"lat","lon","when","wind":{...}} or NULL
+    altitude_gain REAL,                    -- denormalized summary for fast grid
+    n_turns REAL,
+    avg_climb_rate REAL,
+    owner_token TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_owner ON bookmarks(owner_token, created_at);
 """
 
 

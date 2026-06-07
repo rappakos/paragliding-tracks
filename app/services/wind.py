@@ -82,11 +82,14 @@ def _fetch_wind(lat: float, lon: float, when_utc: datetime) -> WindState:
         "timezone": "UTC",
     }
 
-    # Use historical archive API for dates older than 5 days
+    # For dates older than 5 days, use the historical-forecast archive rather
+    # than the ERA5 archive: ERA5 (archive-api) only serves surface (10 m) wind
+    # and returns null for pressure levels, whereas the historical-forecast API
+    # provides the 925/850/700 hPa winds we need (data from 2022 onwards).
     now = datetime.now(timezone.utc)
     days_ago = (now - when_utc).days
     if days_ago > 5:
-        api_url = "https://archive-api.open-meteo.com/v1/archive"
+        api_url = "https://historical-forecast-api.open-meteo.com/v1/forecast"
     else:
         api_url = f"{settings.openmeteo_base}/forecast"
 

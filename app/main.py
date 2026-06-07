@@ -11,7 +11,7 @@ import os
 
 from app.config import settings
 from app.db import init_db
-from app.routers import dem, weather, overlays, igc
+from app.routers import dem, weather, overlays, igc, bookmarks
 
 logging.basicConfig(level=settings.log_level)
 
@@ -41,6 +41,7 @@ app.include_router(dem.router)
 app.include_router(weather.router)
 app.include_router(overlays.router)
 app.include_router(igc.router)
+app.include_router(bookmarks.router)
 
 
 @app.get("/health")

@@ -186,6 +186,60 @@
     .dual-range input[type=range]#range-end::-moz-range-thumb {
       background: #e63946;
     }
+
+    /* ── Bookmark feature ── */
+    #bookmark-btn { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+    #bookmark-btn:disabled { background: #94a3b8; border-color: #94a3b8; cursor: not-allowed; }
+    .nav-link {
+      font-size: 12px; text-decoration: none; background: #333; color: #fff;
+      padding: 3px 8px; border-radius: 4px; cursor: pointer; border: none;
+    }
+
+    /* Full-screen overlay views */
+    #bookmarks-view, #bookmark-view {
+      display: none; position: absolute; inset: 0; z-index: 20; background: #f1f5f9;
+    }
+    #bookmarks-view { overflow: auto; }
+    #bookmarks-view.visible { display: block; }
+    #bookmark-view.visible { display: flex; flex-direction: column; }
+    .bm-topbar {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: #fff; border-bottom: 1px solid #d1d5db; flex: 0 0 auto;
+    }
+    .bm-topbar h2 { font-size: 15px; color: #333; font-weight: 700; }
+    #bm-title { font-size: 14px; color: #333; font-weight: 600; }
+
+    /* Bookmarks grid table */
+    .bm-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+    .bm-table th, .bm-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    .bm-table th { background: #f8fafc; color: #555; font-weight: 600; position: sticky; top: 0; }
+    .bm-table input.bm-name { width: 100%; font-size: 12px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 3px; }
+    .bm-table button { font-size: 11px; padding: 2px 8px; border: 1px solid #d1d5db; border-radius: 3px; background: #fff; cursor: pointer; margin-right: 4px; }
+    .bm-table button.open { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .bm-table button.del { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .bm-empty { padding: 30px; color: #888; font-size: 13px; text-align: center; }
+
+    /* Detail 2x2 panel grid */
+    .bm-grid {
+      flex: 1 1 auto; display: grid; grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; min-height: 0;
+    }
+    .bm-cell {
+      background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
+      overflow: hidden; min-width: 0; min-height: 0; position: relative;
+    }
+    .bm-cell-title {
+      position: absolute; top: 4px; left: 8px; font-size: 11px; font-weight: 600;
+      color: #555; z-index: 1; background: rgba(255,255,255,0.8); padding: 1px 4px;
+      border-radius: 3px; pointer-events: none;
+    }
+    #bm-map, #bm-prof-chart, #bm-xsec-chart { width: 100%; height: 100%; }
+    #bm-stats { padding: 26px 12px 12px; font-size: 12px; color: #333; overflow: auto; height: 100%; }
+    #bm-stats .stat-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid #f1f5f9; }
+    #bm-stats .stat-row b { color: #555; font-weight: 600; }
+    @media (max-width: 600px) {
+      .bm-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 240px); }
+    }
   </style>
 </head>
 <body>
@@ -194,6 +248,7 @@
   <div id="panel">
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <a href="/" style="font-size:12px;text-decoration:none;background:#333;color:#fff;padding:3px 8px;border-radius:4px;">⌂ Home</a>
+      <a href="#/bookmarks" class="nav-link" style="background:#7c3aed;">★ Bookmarks</a>
       <a href="https://github.com/rappakos/paragliding-tracks/blob/main/README.md" style="font-size:12px;text-decoration:none;background:#333;color:#fff;padding:3px 8px;border-radius:4px;">Background</a>
     </div>
     <h2>☀ Thermal Trigger Visualizer</h2>
@@ -259,6 +314,7 @@
       <span>📈 Altitude Profile <span id="profile-selection-info"></span></span>
       <div>
         <button id="profile-analyze-btn" class="primary" disabled>Analyze</button>
+        <button id="bookmark-btn" disabled>★ Bookmark</button>
         <button id="profile-close-btn">✕</button>
       </div>
     </div>
@@ -272,6 +328,43 @@
         </div>
         <span id="range-end-label" style="min-width:32px;text-align:right;background:rgba(255,255,255,0.8);border-radius:2px;padding:0 2px;">--:--</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Bookmarks grid view -->
+  <div id="bookmarks-view">
+    <div class="bm-topbar">
+      <a href="#/" class="nav-link">← Map</a>
+      <h2>★ Bookmarked Thermals</h2>
+    </div>
+    <table class="bm-table">
+      <thead>
+        <tr>
+          <th style="width:18%;">Name</th>
+          <th>Source</th>
+          <th>Start</th>
+          <th>Climb</th>
+          <th>ΔAlt</th>
+          <th>Turns</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="bm-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Bookmark detail view (4 panels) -->
+  <div id="bookmark-view">
+    <div class="bm-topbar">
+      <a href="#/bookmarks" class="nav-link">← Bookmarks</a>
+      <span id="bm-title"></span>
+    </div>
+    <div class="bm-grid">
+      <div class="bm-cell"><span class="bm-cell-title">🗺️ Track segment</span><div id="bm-map"></div></div>
+      <div class="bm-cell"><span class="bm-cell-title">📈 Altitude h(t)</span><div id="bm-prof-chart"></div></div>
+      <div class="bm-cell"><span class="bm-cell-title">📊 Analysis</span><div id="bm-stats"></div></div>
+      <div class="bm-cell"><span class="bm-cell-title">📐 Cross-section (drift plane · <span style="color:#6b4423;">▰</span> terrain)</span><div id="bm-xsec-chart"></div></div>
     </div>
   </div>
 
@@ -469,6 +562,7 @@
       // Initial data load
       refreshAll();
       loadTrackList();
+      route();  // honor a deep-linked #/bookmarks or #/bookmark/{id} on cold load
     });
 
     // ── Toggle + opacity ──────────────────────────────────────────────────
@@ -563,7 +657,7 @@
 
     async function fetchJSON(url) {
       const headers = {};
-      if (url.startsWith("/igc/")) headers["X-Owner-Token"] = OWNER_TOKEN;
+      if (url.startsWith("/igc/") || url.startsWith("/bookmarks")) headers["X-Owner-Token"] = OWNER_TOKEN;
       const resp = await fetch(API_BASE + url, { headers });
       if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
       return resp.json();
@@ -720,6 +814,7 @@
     const profileChart = document.getElementById("profile-chart");
     const profileSelInfo = document.getElementById("profile-selection-info");
     const profileAnalyzeBtn = document.getElementById("profile-analyze-btn");
+    const bookmarkBtn = document.getElementById("bookmark-btn");
     const profileCloseBtn = document.getElementById("profile-close-btn");
 
     let currentTrackData = null;  // { times, alts, coords, trackId }
@@ -737,6 +832,7 @@
       currentTrackData = { times, alts, coords, trackId };
       selectedRange = null;
       profileAnalyzeBtn.disabled = true;
+      bookmarkBtn.disabled = true;
       profileSelInfo.textContent = "";
 
       profilePanel.classList.add("visible");
@@ -774,6 +870,7 @@
             if (width < 3) {
               selectedRange = null;
               profileAnalyzeBtn.disabled = true;
+              bookmarkBtn.disabled = true;
               profileSelInfo.textContent = "";
               map.getSource("track-highlight-source").setData({ type: "FeatureCollection", features: [] });
               return;
@@ -783,6 +880,7 @@
             if (startIdx >= 0 && endIdx > startIdx) {
               selectedRange = { startIdx, endIdx };
               profileAnalyzeBtn.disabled = false;
+              bookmarkBtn.disabled = false;
               const dt = ((times[endIdx] - times[startIdx]) / 60).toFixed(1);
               const altGain = Math.round(alts[endIdx] - alts[startIdx]);
               profileSelInfo.textContent = `| ${dt} min, Δalt ${altGain > 0 ? "+" : ""}${altGain}m (fixes ${startIdx}–${endIdx})`;
@@ -828,6 +926,7 @@
         rangeEndLabel.textContent = fmtRangeTime(times[ei]);
         selectedRange = { startIdx: si, endIdx: ei };
         profileAnalyzeBtn.disabled = false;
+        bookmarkBtn.disabled = false;
         const dt = ((times[ei] - times[si]) / 60).toFixed(1);
         const altGain = Math.round(alts[ei] - alts[si]);
         profileSelInfo.textContent = `| ${dt} min, Δalt ${altGain > 0 ? "+" : ""}${altGain}m (fixes ${si}–${ei})`;
@@ -932,6 +1031,356 @@
       const el = document.createElement("span");
       el.textContent = s;
       return el.innerHTML;
+    }
+
+    // ══ Bookmark feature ═══════════════════════════════════════════════════
+
+    // ── Create bookmark from the current selection ──
+    bookmarkBtn.addEventListener("click", async () => {
+      if (!selectedRange || !currentTrackData) return;
+      bookmarkBtn.disabled = true;
+      setStatus("Saving bookmark…");
+      try {
+        const resp = await fetch(API_BASE + "/bookmarks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Owner-Token": OWNER_TOKEN },
+          body: JSON.stringify({
+            track_id: currentTrackData.trackId,
+            start_idx: selectedRange.startIdx,
+            end_idx: selectedRange.endIdx,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        setStatus("Bookmark saved.");
+        location.hash = "#/bookmarks";
+      } catch (err) {
+        setStatus("Bookmark error: " + err.message);
+      } finally {
+        bookmarkBtn.disabled = false;
+      }
+    });
+
+    // ── Hash router: main view ⇄ grid ⇄ detail ──
+    const bookmarksView = document.getElementById("bookmarks-view");
+    const bookmarkView = document.getElementById("bookmark-view");
+
+    function showView(viewId) {
+      bookmarksView.classList.toggle("visible", viewId === "bookmarks-view");
+      bookmarkView.classList.toggle("visible", viewId === "bookmark-view");
+    }
+
+    function teardownDetail() {
+      if (bmProfPlot) { bmProfPlot.destroy(); bmProfPlot = null; }
+      if (bmXsecPlot) { bmXsecPlot.destroy(); bmXsecPlot = null; }
+    }
+
+    function route() {
+      const m = location.hash.match(/^#\/bookmark\/(\d+)$/);
+      if (m) {
+        showBookmarkDetail(parseInt(m[1], 10));
+      } else if (location.hash === "#/bookmarks") {
+        teardownDetail();
+        showView("bookmarks-view");
+        loadBookmarks();
+      } else {
+        teardownDetail();
+        showView(null);
+      }
+    }
+    window.addEventListener("hashchange", route);
+
+    // ── Grid ──
+    async function loadBookmarks() {
+      const tbody = document.getElementById("bm-tbody");
+      tbody.innerHTML = '<tr><td colspan="8" class="bm-empty">Loading…</td></tr>';
+      let items;
+      try {
+        items = await fetchJSON("/bookmarks");
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8" class="bm-empty">Error: ${escHtml(e.message)}</td></tr>`;
+        return;
+      }
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="bm-empty">No bookmarks yet. Select a thermal segment on the map and click ★ Bookmark.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = "";
+      for (const b of items) {
+        const climb = b.avg_climb_rate != null ? b.avg_climb_rate.toFixed(2) + " m/s" : "–";
+        const gain = b.altitude_gain != null ? "+" + Math.round(b.altitude_gain) + " m" : "–";
+        const turns = b.n_turns != null ? b.n_turns : "–";
+        const created = b.created_at ? b.created_at.replace("T", " ").slice(0, 16) : "";
+        const start = b.start_time ? b.start_time.replace("T", " ").slice(0, 16) : "";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><input class="bm-name" value="${escHtml(b.name || "")}" placeholder="(unnamed)" data-id="${b.id}" /></td>
+          <td>${escHtml(b.track_filename || "")}</td>
+          <td>${escHtml(start)}</td>
+          <td>${escHtml(String(climb))}</td>
+          <td>${escHtml(String(gain))}</td>
+          <td>${escHtml(String(turns))}</td>
+          <td>${escHtml(created)}</td>
+          <td style="white-space:nowrap;">
+            <button class="open" data-id="${b.id}">Open</button>
+            <button class="del" data-id="${b.id}">Delete</button>
+          </td>`;
+        tbody.appendChild(tr);
+      }
+      tbody.querySelectorAll("input.bm-name").forEach((inp) => {
+        inp.addEventListener("change", () => renameBookmark(parseInt(inp.dataset.id, 10), inp.value));
+      });
+      tbody.querySelectorAll("button.open").forEach((btn) => {
+        btn.addEventListener("click", () => { location.hash = "#/bookmark/" + btn.dataset.id; });
+      });
+      tbody.querySelectorAll("button.del").forEach((btn) => {
+        btn.addEventListener("click", () => deleteBookmark(parseInt(btn.dataset.id, 10)));
+      });
+    }
+
+    async function renameBookmark(id, name) {
+      try {
+        const resp = await fetch(API_BASE + `/bookmarks/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "X-Owner-Token": OWNER_TOKEN },
+          body: JSON.stringify({ name }),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      } catch (e) {
+        alert("Rename failed: " + e.message);
+      }
+    }
+
+    async function deleteBookmark(id) {
+      if (!confirm("Delete this bookmark?")) return;
+      try {
+        const resp = await fetch(API_BASE + `/bookmarks/${id}`, {
+          method: "DELETE",
+          headers: { "X-Owner-Token": OWNER_TOKEN },
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        loadBookmarks();
+      } catch (e) {
+        alert("Delete failed: " + e.message);
+      }
+    }
+
+    // ── Detail view ──
+    let detailMap = null;
+    let bmProfPlot = null;
+    let bmXsecPlot = null;
+    let detailObserversInit = false;
+
+    function addAnalysisLayers(m) {
+      m.addSource("seg-source", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({ id: "seg-layer", type: "line", source: "seg-source",
+        paint: { "line-color": "#e63946", "line-width": 3, "line-opacity": 0.9 } });
+      m.addSource("core-line-source", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({ id: "core-line-layer", type: "line", source: "core-line-source",
+        paint: { "line-color": "#7c3aed", "line-width": 3, "line-dasharray": [4, 3], "line-opacity": 0.9 } });
+      m.addSource("trigger-point-source", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({ id: "trigger-point-layer", type: "circle", source: "trigger-point-source",
+        paint: { "circle-radius": 7, "circle-color": "#f59e0b", "circle-stroke-color": "#7c3aed", "circle-stroke-width": 2, "circle-opacity": 0.9 } });
+    }
+
+    function ensureDetailMap() {
+      if (detailMap) return detailMap;
+      detailMap = new maplibregl.Map({
+        container: "bm-map",
+        style: {
+          version: 8,
+          sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, attribution: "© OpenStreetMap contributors" } },
+          layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.5 } }],
+        },
+        center: [CENTER_LON, CENTER_LAT],
+        zoom: 12,
+      });
+      detailMap.on("load", () => { addAnalysisLayers(detailMap); detailMap._ready = true; });
+      return detailMap;
+    }
+
+    function fmtDuration(times) {
+      if (!times || times.length < 2) return "–";
+      const sec = times[times.length - 1] - times[0];
+      return (sec / 60).toFixed(1) + " min";
+    }
+
+    function makeAltChart(el, times, alts) {
+      el.innerHTML = "";
+      return new uPlot({
+        width: el.clientWidth || 400,
+        height: el.clientHeight || 200,
+        cursor: { drag: { x: false, y: false } },
+        scales: { x: { time: true }, y: { auto: true } },
+        axes: [
+          { size: 30, font: "10px system-ui", stroke: "#888" },
+          { size: 46, font: "10px system-ui", stroke: "#888", values: (u, vals) => vals.map((v) => v + "m") },
+        ],
+        series: [ {}, { stroke: "#e63946", width: 1.5, fill: "rgba(230,57,70,0.08)", label: "Alt (m)" } ],
+      }, [times, alts], el);
+    }
+
+    function makeCrossSection(el, xs) {
+      el.innerHTML = "";
+      const reg = xs.regression;
+      const ground = xs.ground;
+
+      // Explicit ranges so the terrain profile and the ground-extended core
+      // line stay in view (they fall outside the fix scatter extent).
+      const allS = xs.s.slice(), allA = xs.alt.slice();
+      if (reg) { allS.push(...reg.s); allA.push(...reg.alt); }
+      if (ground && ground.s.length) { allS.push(...ground.s); allA.push(...ground.alt); }
+      const sMin = Math.min(...allS), sMax = Math.max(...allS);
+      const aMin = Math.min(...allA), aMax = Math.max(...allA);
+      const aPad = (aMax - aMin) * 0.05 || 10;
+
+      return new uPlot({
+        width: el.clientWidth || 400,
+        height: el.clientHeight || 200,
+        cursor: { drag: { x: false, y: false } },
+        scales: {
+          // span the terrain edge-to-edge (ground is the widest series)
+          x: { time: false, range: [sMin, sMax] },
+          y: { range: [aMin - aPad, aMax + aPad] },
+        },
+        axes: [
+          { size: 30, font: "10px system-ui", stroke: "#888", values: (u, vals) => vals.map((v) => v + "m") },
+          { size: 46, font: "10px system-ui", stroke: "#888", values: (u, vals) => vals.map((v) => v + "m") },
+        ],
+        series: [ {}, { stroke: "#e63946", paths: () => null, points: { show: true, size: 4 }, label: "fix" } ],
+        hooks: { draw: [(u) => {
+          const ctx = u.ctx;
+          ctx.save();
+          // DEM terrain — filled brown profile
+          if (ground && ground.s.length) {
+            const yBottom = u.bbox.top + u.bbox.height;
+            ctx.beginPath();
+            ctx.moveTo(u.valToPos(ground.s[0], "x", true), yBottom);
+            for (let i = 0; i < ground.s.length; i++) {
+              ctx.lineTo(u.valToPos(ground.s[i], "x", true), u.valToPos(ground.alt[i], "y", true));
+            }
+            ctx.lineTo(u.valToPos(ground.s[ground.s.length - 1], "x", true), yBottom);
+            ctx.closePath();
+            ctx.fillStyle = "rgba(120,85,60,0.30)";
+            ctx.fill();
+            ctx.beginPath();
+            for (let i = 0; i < ground.s.length; i++) {
+              const px = u.valToPos(ground.s[i], "x", true), py = u.valToPos(ground.alt[i], "y", true);
+              i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+            }
+            ctx.strokeStyle = "#6b4423";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+          // Core / regression line — purple dashed, extended to ground
+          if (reg) {
+            ctx.strokeStyle = "#7c3aed";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(u.valToPos(reg.s[0], "x", true), u.valToPos(reg.alt[0], "y", true));
+            ctx.lineTo(u.valToPos(reg.s[1], "x", true), u.valToPos(reg.alt[1], "y", true));
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }] },
+      }, [xs.s, xs.alt], el);
+    }
+
+    function initDetailObservers(profEl, xsecEl) {
+      if (detailObserversInit) return;
+      detailObserversInit = true;
+      new ResizeObserver(() => { if (bmProfPlot) bmProfPlot.setSize({ width: profEl.clientWidth, height: profEl.clientHeight }); }).observe(profEl);
+      new ResizeObserver(() => { if (bmXsecPlot) bmXsecPlot.setSize({ width: xsecEl.clientWidth, height: xsecEl.clientHeight }); }).observe(xsecEl);
+    }
+
+    async function showBookmarkDetail(id) {
+      showView("bookmark-view");
+      const titleEl = document.getElementById("bm-title");
+      titleEl.textContent = "Loading…";
+      let data;
+      try {
+        data = await fetchJSON(`/bookmarks/${id}`);
+      } catch (e) {
+        titleEl.textContent = "Error: " + e.message;
+        return;
+      }
+      titleEl.textContent = data.name || `Bookmark #${data.id}`;
+
+      const coords = (data.fixes && data.fixes.coords) || [];
+      const times = (data.fixes && data.fixes.times) || [];
+      const alts = coords.map((c) => c[2] || 0);
+      const a = data.analysis;
+
+      // Panel 1 — map segment + core line + trigger point
+      const m = ensureDetailMap();
+      const drawSeg = () => {
+        m.getSource("seg-source").setData({ type: "Feature", geometry: { type: "LineString", coordinates: coords } });
+        m.getSource("core-line-source").setData(a && a.core_line ? a.core_line : { type: "FeatureCollection", features: [] });
+        m.getSource("trigger-point-source").setData(
+          a && a.trigger_point
+            ? { type: "Feature", geometry: { type: "Point", coordinates: a.trigger_point } }
+            : { type: "FeatureCollection", features: [] }
+        );
+        let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+        for (const c of coords) {
+          minLon = Math.min(minLon, c[0]); maxLon = Math.max(maxLon, c[0]);
+          minLat = Math.min(minLat, c[1]); maxLat = Math.max(maxLat, c[1]);
+        }
+        if (isFinite(minLon)) m.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 40, duration: 0 });
+        m.resize();
+      };
+      if (m._ready) drawSeg(); else m.once("load", drawSeg);
+
+      // Panel 2 — altitude h(t)
+      const profEl = document.getElementById("bm-prof-chart");
+      if (bmProfPlot) { bmProfPlot.destroy(); bmProfPlot = null; }
+      bmProfPlot = makeAltChart(profEl, times, alts);
+
+      // Panel 3 — analysis summary + wind snapshot
+      const rows = [];
+      if (a) {
+        rows.push(["Climb rate", a.avg_climb_rate.toFixed(2) + " m/s"]);
+        rows.push(["Altitude gain", "+" + Math.round(a.altitude_gain) + " m"]);
+        rows.push(["Turns", a.n_turns]);
+        rows.push(["Drift", a.drift_speed.toFixed(1) + " m/s @ " + Math.round(a.drift_bearing) + "°"]);
+        if (a.ground_elevation != null) rows.push(["Ground elev.", Math.round(a.ground_elevation) + " m"]);
+      } else {
+        rows.push(["Analysis", "unavailable (segment too short/flat)"]);
+      }
+      rows.push(["Duration", fmtDuration(times)]);
+      rows.push(["Fixes", coords.length]);
+      rows.push(["Start", data.start_time ? data.start_time.replace("T", " ").slice(0, 19) : "?"]);
+      rows.push(["Source", data.track_filename || "?"]);
+      if (data.weather && data.weather.wind) {
+        const w = data.weather.wind;
+        if (w.levels && w.levels.length) {
+          for (const lv of w.levels) {
+            rows.push([`Wind ${lv.level}`, `${(lv.speed || 0).toFixed(1)} m/s from ${Math.round(lv.direction || 0)}°`]);
+          }
+        }
+        const spd = Math.hypot(w.mean_u || 0, w.mean_v || 0);
+        const fromAz = (Math.atan2(w.mean_u || 0, w.mean_v || 0) * 180 / Math.PI + 180 + 360) % 360;
+        rows.push(["Wind (mean)", spd.toFixed(1) + " m/s from " + Math.round(fromAz) + "°"]);
+      }
+      document.getElementById("bm-stats").innerHTML = rows
+        .map((r) => `<div class="stat-row"><b>${escHtml(String(r[0]))}</b><span>${escHtml(String(r[1]))}</span></div>`)
+        .join("");
+
+      // Panel 4 — vertical cross-section in the drift plane
+      const xsecEl = document.getElementById("bm-xsec-chart");
+      if (bmXsecPlot) { bmXsecPlot.destroy(); bmXsecPlot = null; }
+      const xs = data.cross_section;
+      if (xs && xs.s && xs.s.length) {
+        bmXsecPlot = makeCrossSection(xsecEl, xs);
+      } else {
+        xsecEl.innerHTML = '<div class="bm-empty">Cross-section unavailable.</div>';
+      }
+
+      initDetailObservers(profEl, xsecEl);
     }
 
   })();
