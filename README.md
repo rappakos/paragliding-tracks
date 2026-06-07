@@ -74,25 +74,9 @@ This gives:
 - **Climb rate**: average vertical speed during the segment
 - **Turn count**: estimated full circles from unwrapped angular position
 
-### Kalman Filter Model (planned)
+### Extended Kalman Filter Model (planned)
 
-A more rigorous approach models the problem as state estimation:
-
-**Hidden state** (per altitude layer):
-- `(x_c, y_c)` – thermal core position at elevation `z`
-- Systematic drift: `(vx_drift, vy_drift)` from meteo wind at that altitude
-
-**Observation model**:
-- Pilot GPS position = core + `R · [cos(θ), sin(θ)]`
-- `θ` rotates at `v_tangential / R` ≈ 9 m/s tangential speed
-- Pilot descends relative to air at `v_sink` ≈ 1.3 m/s
-
-**Noise sources**:
-- Thermal turbulence (core position jitter)
-- Imperfect pilot input (radius variation, speed variation)
-- GPS measurement noise
-
-The `filterpy` library (optional dependency: `pip install -e ".[igc]"`) provides the Extended Kalman Filter implementation for this model.
+See [Extended Kalman Filter](./extended_kalman_filter.md)
 
 ### API Endpoint
 
