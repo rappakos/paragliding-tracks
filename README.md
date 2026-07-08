@@ -76,7 +76,7 @@ This gives:
 
 ### Extended Kalman Filter Model (planned)
 
-See [Extended Kalman Filter](./extended_kalman_filter.md)
+See [Extended Kalman Filter](./EKF_MODEL.md)
 
 ### API Endpoint
 
