@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     altitude_gain REAL,                    -- denormalized summary for fast grid
     n_turns REAL,
     avg_climb_rate REAL,
+    method TEXT NOT NULL DEFAULT 'linreg',  -- 'linreg' or 'ekf'
     owner_token TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -88,6 +89,11 @@ def init_db() -> None:
             "INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', ?)",
             (str(_SCHEMA_VERSION),),
         )
+        # Non-destructive migration: add method column to existing databases.
+        try:
+            conn.execute("ALTER TABLE bookmarks ADD COLUMN method TEXT NOT NULL DEFAULT 'linreg'")
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.commit()
 
 

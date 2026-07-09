@@ -91,3 +91,38 @@ Body: { "start_idx": 120, "end_idx": 450 }
 ```
 
 Returns: `core_line` (GeoJSON), `avg_climb_rate`, `altitude_gain`, `n_turns`, `drift_bearing`, `drift_speed`.
+
+## Known Issues
+
+### 1. DEM cache mismatches during thermal analysis
+
+**Symptom:** Every EKF or linreg analysis triggers a fresh DEM download from the
+OpenTopography API instead of reusing the cached tile from the map overlay.
+
+**Root cause:** `_ground_elevation()` in `thermal_ekf.py` and `_get_ground_elevation()`
+in `thermal_analysis.py` each build a tiny per-point bbox (`lon ± 0.015°`).
+After quantisation (step 0.01°) this resolves to a different `diskcache` key from the
+large viewport tile cached by the overlay endpoints — guaranteed cache miss.
+The bisection loop in `_find_ground_trigger` (up to 40 iterations) compounds this.
+
+**Fix:** Fetch the DEM once per analysis using the segment's bounding box (from
+`lons`/`lats` + 0.02° padding), then pass `(arr, transform)` directly into
+`_find_ground_trigger` and ground-elevation sampling instead of calling `get_dem_array`
+inside each point-level lookup.
+
+Files: `app/services/thermal_ekf.py`, `app/services/thermal_analysis.py`
+
+---
+
+### 2. EKF results not shown on the bookmarked thermals page
+
+**Symptom:** The bookmarked thermals page only stores and displays linreg-derived fields.
+EKF output (filtered core trajectory, ground trigger, per-height radius) is lost on save.
+
+**What's needed:**
+- Store `method` (`"ekf"` or `"linreg"`) with the saved thermal record.
+- Return EKF-specific fields (`radius_bottom`/`radius_top` from `xs[5,:]`) in the
+  analyze response so the frontend can forward them to the save endpoint.
+- On the bookmarked thermals page, render the EKF core line and trigger point using
+  the existing `core-line-layer` / `trigger-point-layer` map layers (`web/index.html`).
+- Show a `method` badge (`EKF` / `LinReg`) next to each bookmarked entry.

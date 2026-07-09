@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 import anyio
 from fastapi import APIRouter, Header, HTTPException
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 from app.db import get_db
 from app.services.thermal_analysis import analyze_thermal_segment, thermal_cross_section
+from app.services.thermal_ekf import estimate_centerline_ekf
 from app.services.wind import wind_state
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ class CreateBookmarkRequest(BaseModel):
     end_idx: int
     name: str | None = None
     capture_weather: bool = True
+    method: Literal["linreg", "ekf"] = "linreg"
 
 
 class RenameBookmarkRequest(BaseModel):
@@ -101,8 +104,8 @@ async def create_bookmark(body: CreateBookmarkRequest, x_owner_token: str = Head
         cur = conn.execute(
             """INSERT INTO bookmarks
                (track_id, track_filename, name, start_time, end_time, start_idx, end_idx,
-                fixes, weather, altitude_gain, n_turns, avg_climb_rate, owner_token)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                fixes, weather, altitude_gain, n_turns, avg_climb_rate, method, owner_token)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 body.track_id,
                 track["filename"],
@@ -116,6 +119,7 @@ async def create_bookmark(body: CreateBookmarkRequest, x_owner_token: str = Head
                 altitude_gain,
                 n_turns,
                 avg_climb_rate,
+                body.method,
                 x_owner_token,
             ),
         )
@@ -154,6 +158,7 @@ async def list_bookmarks(x_owner_token: str = Header(default="")):
             "altitude_gain": r["altitude_gain"],
             "n_turns": r["n_turns"],
             "avg_climb_rate": r["avg_climb_rate"],
+            "method": r["method"],
             "created_at": r["created_at"],
         }
         for r in rows
@@ -180,8 +185,12 @@ async def get_bookmark(bookmark_id: int, x_owner_token: str = Header(default="")
     # Recompute on the stored subset (indices 0..N-1, NOT the original track indices)
     analysis = None
     cross_section = None
+    method = row["method"] or "linreg"
     try:
-        analysis = analyze_thermal_segment(coords, times, 0, last)
+        if method == "ekf":
+            analysis = estimate_centerline_ekf(coords, times, None, 0, last)
+        else:
+            analysis = analyze_thermal_segment(coords, times, 0, last)
         cross_section = thermal_cross_section(coords, times, 0, last)
     except ValueError as e:
         logger.info("Bookmark %d analysis unavailable (%s)", bookmark_id, e)
@@ -194,6 +203,7 @@ async def get_bookmark(bookmark_id: int, x_owner_token: str = Header(default="")
         "start_time": row["start_time"],
         "end_time": row["end_time"],
         "created_at": row["created_at"],
+        "method": method,
         "fixes": fixes,
         "analysis": analysis,
         "cross_section": cross_section,

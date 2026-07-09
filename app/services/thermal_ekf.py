@@ -218,31 +218,25 @@ def _run_filter(x_local: np.ndarray, y_local: np.ndarray, alts: np.ndarray,
 
 # ── Ground trigger (EKF_MODEL.md §8, without covariance propagation) ──
 
-def _ground_elevation(lon: float, lat: float) -> float | None:
-    """Look up terrain elevation at a point using the DEM service."""
-    try:
-        from app.services.dem_source import get_dem_array
-
-        delta = 0.015  # bbox must exceed the 0.01 quantisation step in dem_source
-        bbox = (lon - delta, lat - delta, lon + delta, lat + delta)
-        arr, transform, _crs = get_dem_array(bbox, res_m=30)
-
-        col, row = ~transform * (lon, lat)
-        row = max(0, min(int(round(row)), arr.shape[0] - 1))
-        col = max(0, min(int(round(col)), arr.shape[1] - 1))
-        elev = float(arr[row, col])
-        return elev if elev > 0 else None
-    except Exception as exc:
-        logger.warning("DEM lookup failed at (%.5f, %.5f): %s", lon, lat, exc)
-        return None
+def _sample_elevation(arr: np.ndarray, transform, lon: float, lat: float) -> float | None:
+    """Sample elevation from a pre-loaded DEM array at (lon, lat)."""
+    col, row = ~transform * (lon, lat)
+    row = max(0, min(int(round(row)), arr.shape[0] - 1))
+    col = max(0, min(int(round(col)), arr.shape[1] - 1))
+    elev = float(arr[row, col])
+    return elev if elev > 0 else None
 
 
 def _find_ground_trigger(cx_bottom: float, cy_bottom: float, s_x: float, s_y: float,
                           h_bottom: float, lon_ref: float, lat_ref: float,
                           m_per_deg_lon: float, m_per_deg_lat: float,
+                          arr: np.ndarray, transform,
                           max_drop: float = 800.0, tol: float = 1.0, max_iter: int = 40):
     """Extrapolate C(h) = C_bottom + s*(h - h_bottom) below h_bottom and bisect
-    for h_g such that h_g == DEM(C(h_g)). Returns (lon, lat, ground_elev) or None."""
+    for h_g such that h_g == DEM(C(h_g)). Returns (lon, lat, ground_elev) or None.
+
+    ``arr`` and ``transform`` are a pre-loaded DEM tile covering the bisection
+    path; pass the result of a single ``get_dem_array`` call from the caller."""
 
     def center_at(h: float):
         dh = h - h_bottom
@@ -251,7 +245,7 @@ def _find_ground_trigger(cx_bottom: float, cy_bottom: float, s_x: float, s_y: fl
         return lon_ref + x / m_per_deg_lon, lat_ref + y / m_per_deg_lat
 
     lon_hi, lat_hi = center_at(h_bottom)
-    elev_hi = _ground_elevation(lon_hi, lat_hi)
+    elev_hi = _sample_elevation(arr, transform, lon_hi, lat_hi)
     if elev_hi is None:
         return None
 
@@ -261,7 +255,7 @@ def _find_ground_trigger(cx_bottom: float, cy_bottom: float, s_x: float, s_y: fl
 
     h_lo = h_bottom - max_drop
     lon_lo, lat_lo = center_at(h_lo)
-    elev_lo = _ground_elevation(lon_lo, lat_lo)
+    elev_lo = _sample_elevation(arr, transform, lon_lo, lat_lo)
     if elev_lo is None or h_lo > elev_lo:
         return None  # terrain doesn't rise into the extrapolated line within max_drop
 
@@ -269,7 +263,7 @@ def _find_ground_trigger(cx_bottom: float, cy_bottom: float, s_x: float, s_y: fl
     for _ in range(max_iter):
         mid = 0.5 * (lo + hi)
         lon_m, lat_m = center_at(mid)
-        elev_m = _ground_elevation(lon_m, lat_m)
+        elev_m = _sample_elevation(arr, transform, lon_m, lat_m)
         if elev_m is None:
             return None
         g_mid = mid - elev_m
@@ -283,7 +277,7 @@ def _find_ground_trigger(cx_bottom: float, cy_bottom: float, s_x: float, s_y: fl
 
     h_g = 0.5 * (lo + hi)
     lon_g, lat_g = center_at(h_g)
-    elev_g = _ground_elevation(lon_g, lat_g)
+    elev_g = _sample_elevation(arr, transform, lon_g, lat_g)
     return lon_g, lat_g, float(elev_g if elev_g is not None else h_g)
 
 
@@ -337,10 +331,27 @@ def estimate_centerline_ekf(
 
     x_bottom, h_bottom = xs_arr[-1], heights_arr[-1]
 
-    trigger = _find_ground_trigger(
-        x_bottom[C_X], x_bottom[C_Y], x_bottom[S_X], x_bottom[S_Y], h_bottom,
-        lon_ref, lat_ref, m_per_deg_lon, m_per_deg_lat,
-    )
+    # Fetch DEM once for the whole segment (covers the bisection path without
+    # re-fetching per bisection step; reuses the cache key from the overlay).
+    dem_arr = dem_transform = None
+    try:
+        from app.services.dem_source import get_dem_array
+        _pad = 0.02
+        seg_bbox = (
+            float(lons.min()) - _pad, float(lats.min()) - _pad,
+            float(lons.max()) + _pad, float(lats.max()) + _pad,
+        )
+        dem_arr, dem_transform, _ = get_dem_array(seg_bbox, res_m=30)
+    except Exception as _exc:
+        logger.warning("DEM fetch failed for segment bbox: %s", _exc)
+
+    trigger = None
+    if dem_arr is not None:
+        trigger = _find_ground_trigger(
+            x_bottom[C_X], x_bottom[C_Y], x_bottom[S_X], x_bottom[S_Y], h_bottom,
+            lon_ref, lat_ref, m_per_deg_lon, m_per_deg_lat,
+            dem_arr, dem_transform,
+        )
 
     core_coords = []
     if trigger is not None:

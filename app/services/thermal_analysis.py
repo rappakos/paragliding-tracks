@@ -85,8 +85,22 @@ def analyze_thermal_segment(
     lon_top = lon_ref + x_top / m_per_deg_lon
     lat_top = lat_ref + y_top / m_per_deg_lat
 
-    # Extrapolate core line to ground level using DEM
-    ground_elevation = _get_ground_elevation(float(lon_bottom), float(lat_bottom))
+    # Extrapolate core line to ground level using DEM.
+    # Fetch once for the whole segment bbox so repeated analyses reuse the cache.
+    ground_elevation: float | None = None
+    try:
+        from app.services.dem_source import get_dem_array
+        _pad = 0.02
+        _seg_bbox = (
+            float(lons.min()) - _pad, float(lats.min()) - _pad,
+            float(lons.max()) + _pad, float(lats.max()) + _pad,
+        )
+        _dem_arr, _dem_transform, _ = get_dem_array(_seg_bbox, res_m=30)
+        ground_elevation = _sample_elevation(_dem_arr, _dem_transform,
+                                             float(lon_bottom), float(lat_bottom))
+    except Exception as _exc:
+        logger.warning("DEM fetch failed, falling back to point lookup: %s", _exc)
+        ground_elevation = _get_ground_elevation(float(lon_bottom), float(lat_bottom))
     if ground_elevation is not None and ground_elevation < alt_min:
         # Extrapolate the regression line down to ground level
         x_ground = np.polyval(coeff_x, ground_elevation)
@@ -326,6 +340,16 @@ def _ground_profile(
     except Exception as exc:
         logger.warning("Ground profile sampling failed: %s", exc)
         return None
+
+
+def _sample_elevation(arr: np.ndarray, transform, lon: float, lat: float) -> float | None:
+    """Sample elevation from a pre-loaded DEM array at (lon, lat)."""
+    col, row = ~transform * (lon, lat)
+    row, col = int(round(row)), int(round(col))
+    row = max(0, min(row, arr.shape[0] - 1))
+    col = max(0, min(col, arr.shape[1] - 1))
+    elev = float(arr[row, col])
+    return elev if elev > 0 else None
 
 
 def _get_ground_elevation(lon: float, lat: float) -> float | None:

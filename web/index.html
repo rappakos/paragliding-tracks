@@ -350,6 +350,7 @@
           <th>Climb</th>
           <th>ΔAlt</th>
           <th>Turns</th>
+          <th>Method</th>
           <th>Created</th>
           <th>Actions</th>
         </tr>
@@ -1057,6 +1058,7 @@
             track_id: currentTrackData.trackId,
             start_idx: selectedRange.startIdx,
             end_idx: selectedRange.endIdx,
+            method: profileAnalyzeMethod.value,
           }),
         });
         if (!resp.ok) {
@@ -1121,6 +1123,7 @@
         const climb = b.avg_climb_rate != null ? b.avg_climb_rate.toFixed(2) + " m/s" : "–";
         const gain = b.altitude_gain != null ? "+" + Math.round(b.altitude_gain) + " m" : "–";
         const turns = b.n_turns != null ? b.n_turns : "–";
+        const methodBadge = b.method === "ekf" ? '<span style="background:#7c3aed;color:#fff;border-radius:3px;padding:1px 5px;font-size:0.78em;">EKF</span>' : '<span style="background:#64748b;color:#fff;border-radius:3px;padding:1px 5px;font-size:0.78em;">LinReg</span>';
         const created = b.created_at ? b.created_at.replace("T", " ").slice(0, 16) : "";
         const start = b.start_time ? b.start_time.replace("T", " ").slice(0, 16) : "";
         const tr = document.createElement("tr");
@@ -1131,6 +1134,7 @@
           <td>${escHtml(String(climb))}</td>
           <td>${escHtml(String(gain))}</td>
           <td>${escHtml(String(turns))}</td>
+          <td>${methodBadge}</td>
           <td>${escHtml(created)}</td>
           <td style="white-space:nowrap;">
             <button class="open" data-id="${b.id}">Open</button>
@@ -1352,12 +1356,14 @@
       // Panel 3 — analysis summary + wind snapshot
       const rows = [];
       if (a) {
+        rows.push(["Method", data.method === "ekf" ? "EKF" : "LinReg"]);
         rows.push(["Climb rate", a.avg_climb_rate.toFixed(2) + " m/s"]);
         rows.push(["Altitude gain", "+" + Math.round(a.altitude_gain) + " m"]);
         rows.push(["Turns", a.n_turns]);
         rows.push(["Drift", a.drift_speed.toFixed(1) + " m/s @ " + Math.round(a.drift_bearing) + "°"]);
         if (a.ground_elevation != null) rows.push(["Ground elev.", Math.round(a.ground_elevation) + " m"]);
       } else {
+        rows.push(["Method", data.method === "ekf" ? "EKF" : "LinReg"]);
         rows.push(["Analysis", "unavailable (segment too short/flat)"]);
       }
       rows.push(["Duration", fmtDuration(times)]);
