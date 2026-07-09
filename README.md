@@ -74,9 +74,14 @@ This gives:
 - **Climb rate**: average vertical speed during the segment
 - **Turn count**: estimated full circles from unwrapped angular position
 
-### Extended Kalman Filter Model (planned)
+### Extended Kalman Filter Model (Phase 1 implemented)
 
-See [Extended Kalman Filter](./EKF_MODEL.md)
+Phase 1 (circle-fit init, GPS + vario updates, reverse-time run, DEM-bisection
+ground trigger) is implemented in `app/services/thermal_ekf.py` and selectable via
+`method: "ekf"` on the `/igc/tracks/{id}/analyze` endpoint (dropdown in the
+Analyze panel). See [Extended Kalman Filter](./EKF_MODEL.md) for the model and
+current status; Phase 2 (wind advection regularizer, RTS smoothing, uncertainty
+ellipse) is not yet implemented.
 
 ### API Endpoint
 

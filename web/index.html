@@ -313,6 +313,10 @@
     <div class="profile-header">
       <span>📈 Altitude Profile <span id="profile-selection-info"></span></span>
       <div>
+        <select id="profile-analyze-method" style="font-size:11px;padding:1px;">
+          <option value="linreg">Linear regression</option>
+          <option value="ekf">EKF</option>
+        </select>
         <button id="profile-analyze-btn" class="primary" disabled>Analyze</button>
         <button id="bookmark-btn" disabled>★ Bookmark</button>
         <button id="profile-close-btn">✕</button>
@@ -814,6 +818,7 @@
     const profileChart = document.getElementById("profile-chart");
     const profileSelInfo = document.getElementById("profile-selection-info");
     const profileAnalyzeBtn = document.getElementById("profile-analyze-btn");
+    const profileAnalyzeMethod = document.getElementById("profile-analyze-method");
     const bookmarkBtn = document.getElementById("bookmark-btn");
     const profileCloseBtn = document.getElementById("profile-close-btn");
 
@@ -977,7 +982,11 @@
         const resp = await fetch(API_BASE + `/igc/tracks/${currentTrackData.trackId}/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Owner-Token": OWNER_TOKEN },
-          body: JSON.stringify({ start_idx: selectedRange.startIdx, end_idx: selectedRange.endIdx }),
+          body: JSON.stringify({
+            start_idx: selectedRange.startIdx,
+            end_idx: selectedRange.endIdx,
+            method: profileAnalyzeMethod.value,
+          }),
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));

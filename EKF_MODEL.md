@@ -8,6 +8,33 @@ The filter marches in **IGC sample time** `t`. Height is a state; the
 stationary-plume assumption enters only through how the center advances with height
 (`dC/dt = s·(w − w_sink)`).
 
+## Status (2026-07-09)
+
+**Phase 1 implemented** in `app/services/thermal_ekf.py`: circle-fit init (§7),
+H1 (GPS) + H2 (vario) updates (§5-6), reverse-time driver (§6), ground-trigger
+bisection (§8, without covariance propagation). Wired into
+`POST /igc/tracks/{id}/analyze` via `method: "ekf"` (`app/routers/igc.py`), with a
+method dropdown in the frontend's Analyze panel (`web/index.html`). Tests in
+`tests/test_thermal_ekf.py` (synthetic noiseless-thermal generator + circle-fit/
+bisection unit tests), all passing.
+
+Validated against real bookmarked segments in the local DB (`data/tracks.db`):
+bookmark 8 ("Boerry 1") matches the linear-regression estimate closely (ground
+elevation 71.6m vs 71.7m). Bookmark 7 ("Rammi 2") returns `trigger_point: null` —
+traced to a genuinely steep real-world lean (`|s| ≈ 1.3-1.7`, cross-checked against
+the linear-regression method's own independent drift estimate of ≈1.47 for the same
+segment — they agree), which would require the plume centerline to drift over a
+kilometer sideways within the 800m default `max_drop` search window. The bisection
+correctly declines rather than returning a physically dubious point; this is not a
+divergence bug, and the frontend already handles a `null` trigger gracefully.
+
+**Deferred to Phase 2**: H3 advection regularizer (needs a wind-at-height
+interpolation helper — `app/services/wind.py` currently only returns discrete
+925/850/700hPa levels, not a continuous `U(h)`), RTS smoothing, the
+covariance-propagated uncertainty ellipse, and the altitude tapering of `w` near
+the surface mentioned in §8 — the tapering is specifically what would resolve
+steep-lean cases like bookmark 7's.
+
 ---
 
 ## 1. Coordinate frame

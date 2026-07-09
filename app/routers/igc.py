@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from app.db import get_db
 from app.services.igc_analysis import parse_igc
 from app.services.thermal_analysis import analyze_thermal_segment
+from app.services.thermal_ekf import estimate_centerline_ekf
 
 router = APIRouter(prefix="/igc", tags=["igc"])
 
@@ -144,11 +146,12 @@ async def delete_track(track_id: int, x_owner_token: str = Header(default="")):
 class AnalyzeRequest(BaseModel):
     start_idx: int
     end_idx: int
+    method: Literal["linreg", "ekf"] = "linreg"
 
 
 @router.post("/tracks/{track_id}/analyze")
 async def analyze_track(track_id: int, body: AnalyzeRequest, x_owner_token: str = Header(default="")):
-    """Analyze a thermal segment of a track (linear regression on core position)."""
+    """Analyze a thermal segment of a track (linear regression or EKF core-position estimate)."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT geojson FROM tracks WHERE id = ? AND owner_token = ?", (track_id, x_owner_token)
@@ -159,7 +162,9 @@ async def analyze_track(track_id: int, body: AnalyzeRequest, x_owner_token: str 
 
     geojson = json.loads(row["geojson"])
     coords = geojson.get("geometry", {}).get("coordinates", [])
-    times = geojson.get("properties", {}).get("times", [])
+    properties = geojson.get("properties", {})
+    times = properties.get("times", [])
+    pressure_alts = properties.get("pressure_alts")
 
     if not times:
         raise HTTPException(status_code=400, detail="Track has no timestamp data. Please re-upload.")
@@ -168,7 +173,10 @@ async def analyze_track(track_id: int, body: AnalyzeRequest, x_owner_token: str 
         raise HTTPException(status_code=400, detail="Invalid index range.")
 
     try:
-        result = analyze_thermal_segment(coords, times, body.start_idx, body.end_idx)
+        if body.method == "ekf":
+            result = estimate_centerline_ekf(coords, times, pressure_alts, body.start_idx, body.end_idx)
+        else:
+            result = analyze_thermal_segment(coords, times, body.start_idx, body.end_idx)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
